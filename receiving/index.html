@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Receiving</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ---- TABS ---- */
+    .tab-bar {
+      display: flex;
+      background: #1a1a2e;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 18px 8px;
+      text-align: center;
+      color: #8892a4;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 3px solid transparent;
+      letter-spacing: 0.3px;
+    }
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: #e63946;
+    }
+
+    /* ---- PAGES ---- */
+    .page { display: none; padding: 16px; max-width: 700px; margin: 0 auto; }
+    .page.active { display: block; }
+    /* Receiving list is a table, not a form — give it the full landscape width */
+    #page-log { max-width: 1100px; }
+
+    /* ---- SECTION LABELS ---- */
+    .section-label {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #6b7280;
+      margin-bottom: 8px;
+      margin-top: 20px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    /* ---- QUICK SELECT ---- */
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .quick-btn {
+      padding: 14px 6px;
+      background: #fff;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a2e;
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.3;
+      letter-spacing: 0.1px;
+    }
+    .quick-btn:active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+    .quick-btn.loading { color: #d1d5db; border-color: #f3f4f6; background: #f9fafb;
+      animation: pulse 1.4s ease-in-out infinite; pointer-events: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.45; }
+    }
+
+    /* ---- CUSTOMER SEARCH ---- */
+    .search-wrap { position: relative; margin-bottom: 4px; }
+    .search-input {
+      width: 100%;
+      padding: 16px 48px 16px 16px;
+      font-size: 20px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #1a1a2e;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: #3b82f6; }
+    .search-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 20px;
+      color: #9ca3af;
+      pointer-events: none;
+    }
+    .dropdown {
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0; right: 0;
+      background: #fff;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 50;
+      display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    .dropdown.open { display: block; }
+    .dropdown-item {
+      padding: 15px 18px;
+      font-size: 19px;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item:active { background: #f0f7ff; }
+    .dropdown-none { padding: 14px 18px; font-size: 17px; color: #9ca3af; }
+
+    /* ---- CUSTOMER BADGE ---- */
+    .customer-badge {
+      display: none;
+      align-items: center;
+      background: #1a1a2e;
+      color: #fff;
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    .customer-badge.show { display: flex; }
+    .badge-name { flex: 1; }
+    .badge-clear {
+      background: none;
+      border: none;
+      color: #6b7280;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 4px 8px;
+      margin-left: 8px;
+      line-height: 1;
+    }
+    .badge-clear:active { color: #e63946; }
+
+    /* ---- CHIPS ---- */
+    .chips-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+    .chip {
+      padding: 12px 20px;
+      background: #eff6ff;
+      border: 2px solid #3b82f6;
+      border-radius: 100px;
+      font-size: 17px;
+      color: #1d4ed8;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .chip:active { background: #3b82f6; color: #fff; }
+
+    /* ---- IMAGE CHIPS (card style when items have photos) ---- */
+    .chips-img-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .chip-card {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      background: #eff6ff;
+      border: 2px solid #3b82f6;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      overflow: hidden;
+      transition: background 0.1s;
+    }
+    .chip-card:active { background: #3b82f6; }
+    .chip-card:active .chip-card-label { color: #fff; }
+    .chip-card-img {
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      display: block;
+      background: #f0f2f5;
+    }
+    .chip-card-placeholder {
+      width: 100%;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e5e7eb;
+      font-size: 28px;
+      color: #9ca3af;
+    }
+    .chip-card-label {
+      padding: 8px 8px 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1d4ed8;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    /* ---- ITEM LIST ---- */
+    .item-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    .item-name {
+      flex: 1;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+    .qty-row {
+      display: flex;
+      align-items: center;
+    }
+    .qty-btn {
+      width: 42px;
+      height: 42px;
+      font-size: 22px;
+      border: 2px solid #d1d5db;
+      background: #f9fafb;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #374151;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qty-btn:active { background: #e5e7eb; }
+    .qty-val {
+      width: 52px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      border: none;
+      background: none;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .qty-val::-webkit-outer-spin-button,
+    .qty-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .remove-btn {
+      background: none;
+      border: none;
+      color: #d1d5db;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 6px;
+      margin-left: 4px;
+      line-height: 1;
+    }
+    .remove-btn:active { color: #e63946; }
+
+    /* ---- CUSTOM ITEM INPUT ---- */
+    .add-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .add-input {
+      flex: 1;
+      padding: 14px 16px;
+      font-size: 18px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      outline: none;
+      color: #1a1a2e;
+    }
+    .add-input:focus { border-color: #3b82f6; }
+    .add-btn {
+      padding: 14px 20px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .add-btn:active { background: #2563eb; }
+
+    /* ---- PO FIELD ---- */
+    .po-hint {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+    .po-input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 20px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      outline: none;
+      color: #1a1a2e;
+    }
+    .po-input:focus { border-color: #3b82f6; }
+
+    /* ---- NOTES FIELD ---- */
+    .notes-input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 18px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      outline: none;
+      color: #1a1a2e;
+      resize: none;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    .notes-input:focus { border-color: #3b82f6; }
+
+    /* ---- FREEFORM CUSTOMER OPTION ---- */
+    .dropdown-freeform { color: #6b7280; font-style: italic; }
+
+    /* ---- SUBMIT ---- */
+    .submit-btn {
+      width: 100%;
+      margin-top: 24px;
+      padding: 20px;
+      font-size: 22px;
+      font-weight: 700;
+      background: #e63946;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: background 0.15s;
+    }
+    .submit-btn:active { background: #c1121f; }
+    .submit-btn:disabled { background: #d1d5db; cursor: default; }
+
+    /* ---- TOAST ---- */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 17px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 100;
+    }
+    .toast.visible { opacity: 1; }
+
+    /* ---- LOG ---- */
+    .log-date-header {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #6b7280;
+      margin: 16px 0 8px;
+    }
+    .log-table-wrap {
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+    .log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .log-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9ca3af;
+      padding: 10px 14px 8px;
+      border-bottom: 2px solid #e5e7eb;
+      background: #fafafa;
+    }
+    .log-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: top;
+      line-height: 1.4;
+    }
+    .log-table tbody tr:last-child td { border-bottom: none; }
+    .log-table tr.done td { opacity: 0.6; }
+    .log-col-customer { font-weight: 700; color: #1a1a2e; width: 22%; }
+    .log-col-po { color: #6b7280; width: 14%; white-space: nowrap; }
+    .log-col-items { color: #374151; }
+    .log-done { color: #22c55e; font-weight: 700; }
+    .log-empty {
+      text-align: center;
+      padding: 48px 16px;
+      font-size: 18px;
+      color: #9ca3af;
+    }
+    .log-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .log-date {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 17px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #1a1a2e;
+      outline: none;
+    }
+    .log-date:focus { border-color: #3b82f6; }
+    .log-refresh {
+      padding: 12px 16px;
+      background: #fff;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 20px;
+      color: #374151;
+      cursor: pointer;
+    }
+    .log-refresh:active { background: #f3f4f6; }
+
+    /* ---- OPEN ORDERS ---- */
+    .orders-loading {
+      padding: 14px 4px;
+      font-size: 15px;
+      color: #9ca3af;
+    }
+    .orders-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+    .orders-header .section-label { margin: 0; }
+    .select-all-btn {
+      background: none;
+      border: none;
+      color: #3b82f6;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .order-btn {
+      display: flex;
+      align-items: flex-start;
+      width: 100%;
+      text-align: left;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      background: #fff;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      cursor: pointer;
+      line-height: 1.4;
+      gap: 10px;
+    }
+    .order-btn.selected { border-color: #3b82f6; background: #eff6ff; }
+    .order-btn.blanket { border-style: dashed; }
+    .order-btn:active { background: #e0e7ff; }
+    .order-check {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border: 2px solid #d1d5db;
+      border-radius: 6px;
+      margin-top: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #fff;
+      background: #fff;
+    }
+    .order-btn.selected .order-check { background: #3b82f6; border-color: #3b82f6; }
+    .order-body { flex: 1; }
+    .order-po { font-weight: 700; font-size: 18px; color: #1a1a2e; }
+    .order-tag { font-size: 12px; font-weight: 600; color: #9ca3af; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .order-items { color: #6b7280; font-size: 14px; margin-top: 2px; }
+
+    /* ---- LOADING ---- */
+    .loading-msg {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+      color: #9ca3af;
+    }
+
+    /* ---- SNAP PO PHOTO ---- */
+    .snap-po-btn {
+      width: 100%;
+      padding: 16px;
+      background: #eff6ff;
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #1d4ed8;
+      cursor: pointer;
+      text-align: center;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .snap-po-btn:active { background: #3b82f6; color: #fff; }
+    .snap-po-btn:disabled { background: #f3f4f6; color: #9ca3af; border-color: #d1d5db; cursor: default; }
+
+    /* ---- CAMERA OVERLAY ---- */
+    .cam-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .cam-overlay.open { display: flex; }
+    .cam-video {
+      width: 100%;
+      max-height: 60vh;
+      object-fit: contain;
+      display: block;
+      background: #111;
+    }
+    .cam-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 20px;
+      width: 100%;
+    }
+    .cam-capture-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #fff;
+      border: 5px solid #3b82f6;
+      font-size: 28px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .cam-capture-btn:active { background: #dbeafe; }
+    .cam-bottom-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 400px;
+    }
+    .cam-cancel-btn {
+      background: none;
+      border: 2px solid #4b5563;
+      border-radius: 10px;
+      color: #9ca3af;
+      font-size: 16px;
+      padding: 12px 20px;
+      cursor: pointer;
+    }
+    .cam-cancel-btn:active { border-color: #e63946; color: #e63946; }
+    .cam-fallback-btn {
+      background: none;
+      border: 2px solid #4b5563;
+      border-radius: 10px;
+      color: #9ca3af;
+      font-size: 16px;
+      padding: 12px 20px;
+      cursor: pointer;
+    }
+    .cam-fallback-btn:active { border-color: #6b7280; color: #fff; }
+    .cam-error {
+      display: none;
+      padding: 24px 28px;
+      color: #fca5a5;
+      font-size: 16px;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 420px;
+    }
+    .cam-error.show { display: block; }
+
+    /* ---- FAB ---- */
+    .fab {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #e63946;
+      color: #fff;
+      font-size: 34px;
+      font-weight: 300;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+      z-index: 50;
+      line-height: 1;
+    }
+    .fab:active { background: #c1121f; transform: scale(0.94); }
+  </style>
+</head>
+<body>
+
+<div class="tab-bar">
+  <button class="tab-btn"        id="tab-intake" onclick="switchTab('intake')">Receive</button>
+  <button class="tab-btn active" id="tab-log"    onclick="switchTab('log')">Today's Log</button>
+</div>
+
+<!-- ========== INTAKE PAGE ========== -->
+<div class="page" id="page-intake">
+
+  <button class="snap-po-btn" id="snapPoBtn" onclick="triggerPoCamera()">📷 Snap PO Photo</button>
+  <!-- Camera overlay (getUserMedia). Served top-level on GitHub Pages, not inside the Apps Script
+       iframe, so the camera permission is granted here — unlike the old HtmlService page. -->
+  <div class="cam-overlay" id="camOverlay">
+    <video class="cam-video" id="camVideo" autoplay playsinline muted></video>
+    <div class="cam-controls">
+      <div class="cam-bottom-row">
+        <button class="cam-cancel-btn" onclick="closeCamera()">Cancel</button>
+        <button class="cam-capture-btn" id="camCaptureBtn" onclick="captureFromCamera()">📸</button>
+        <button class="cam-fallback-btn" onclick="useCameraFallback()">Upload file</button>
+      </div>
+    </div>
+    <div class="cam-error" id="camError"></div>
+  </div>
+  <!-- Fallback: native camera/file picker. capture= hints the rear camera on tablets. -->
+  <input type="file" id="poPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="onPoPhotoSelected(this)">
+
+  <div id="quickSection">
+    <div class="section-label">Top customers</div>
+    <div class="quick-grid" id="quickGrid">
+      <!-- populated after customer data loads -->
+    </div>
+    <div class="section-label">Other customer</div>
+  </div>
+
+  <div class="search-wrap" id="searchWrap">
+    <input class="search-input" id="customerInput" type="text"
+           placeholder="Loading customers…" disabled
+           oninput="onSearchInput(this.value)"
+           onfocus="onSearchFocus()"
+           autocomplete="off" autocorrect="off" spellcheck="false">
+    <span class="search-icon">🔍</span>
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+
+  <div class="customer-badge" id="customerBadge">
+    <span class="badge-name" id="badgeName"></span>
+    <button class="badge-clear" onclick="clearCustomer()" title="Change customer">✕</button>
+  </div>
+
+  <div id="openOrdersSection" style="display:none">
+    <div class="orders-header">
+      <div class="section-label">Open orders</div>
+      <button class="select-all-btn" id="selectAllBtn" onclick="selectAllOrders()">Select all</button>
+    </div>
+    <div id="openOrdersBtns"></div>
+  </div>
+
+  <div id="suggestionsSection" style="display:none">
+    <div class="section-label">Quick add</div>
+    <div class="chips-wrap" id="chips"></div>
+  </div>
+
+  <div id="itemsSection" style="display:none">
+    <div class="section-label">Items received</div>
+    <div id="itemList"></div>
+    <div class="add-row">
+      <input class="add-input" id="customItem" type="text"
+             placeholder="Other item…"
+             autocomplete="off" autocorrect="off"
+             onkeydown="if(event.key==='Enter')addCustomItem()">
+      <button class="add-btn" onclick="addCustomItem()">Add</button>
+    </div>
+  </div>
+
+  <div id="poSection" style="display:none">
+    <div class="section-label">PO / Reference number</div>
+    <div class="po-hint" id="poHint"></div>
+    <input class="po-input" id="poInput" type="text"
+           placeholder="Optional"
+           autocomplete="off" autocorrect="off">
+  </div>
+
+  <div id="notesSection" style="display:none">
+    <div class="section-label">Notes</div>
+    <textarea class="notes-input" id="notesInput" rows="2"
+              placeholder="Optional — damaged, short ship, new customer, etc."
+              autocomplete="off" autocorrect="off"></textarea>
+  </div>
+
+  <button class="submit-btn" id="submitBtn" onclick="onSubmit()" style="display:none">
+    Submit
+  </button>
+
+</div>
+
+<!-- ========== LOG PAGE ========== -->
+<div class="page active" id="page-log">
+  <div class="log-toolbar">
+    <input type="date" id="logDate" class="log-date" onchange="loadLog()">
+    <button class="log-refresh" onclick="loadLog()" title="Refresh">↻</button>
+  </div>
+  <div id="logContent" class="loading-msg">Loading…</div>
+</div>
+
+<button class="fab" id="fab" onclick="switchTab('intake')" title="New receiving entry">+</button>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =====================================================================
+// BACKEND — Apps Script "Receiving Intake" web app, called as a JSON API.
+// This page is served top-level from GitHub Pages, so every server call is a
+// cross-origin fetch(). text/plain keeps it a CORS "simple request" (no preflight,
+// which Apps Script can't answer); Apps Script returns permissive CORS so we can
+// read the response. The auth token never leaves the server — it lives in the
+// backend's Script Properties, exactly as before.
+// =====================================================================
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec';
+
+function call(op, payload) {
+  return fetch(BACKEND_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op: op, payload: payload || {} }),
+    redirect: 'follow'
+  }).then(function (r) { return r.json(); });
+}
+
+// =====================================================================
+// STATE
+// =====================================================================
+var allCustomers    = [];   // [{name, aliases, items, staffNote}]
+var selectedCust    = null; // selected customer object
+var itemRows        = [];   // [{name, qty}]
+var toastTimer      = null;
+var openOrders       = [];  // [{so_id, so_number, po_number, is_blanket, items}]
+var selectedOrderIdxs = []; // indices of selected orders
+
+// Filled by the bootstrap fetch on load (was server-injected in the old HtmlService page).
+var _TODAY      = '';
+var _ALL_ORDERS = {};
+var _TODAY_LOG  = null;
+var _PRELOAD    = null;
+
+// Top 20 customers by max single-item shipment frequency (from historical data).
+// short = button label; full = canonical name to match against allCustomers.
+var TOP_CUSTOMERS = [
+  { short: 'Andersen',     full: 'Andersen Corporation' },
+  { short: 'BTD',          full: 'BTD Manufacturing Inc.' },
+  { short: 'Cybex',        full: 'Cybex International Inc.' },
+  { short: 'Decimet',      full: 'Decimet Sales, Inc.' },
+  { short: 'ESC',          full: 'ESC - Electrostatic Corp.' },
+  { short: 'Gandy',        full: 'Gandy Company' },
+  { short: 'Gauthier',     full: 'Gauthier Industries Inc. (RPC)' },
+  { short: 'Graco Inc.',   full: 'Graco Inc.' },
+  { short: 'Harvey Vogel', full: 'Harvey Vogel Manufacturing Co.' },
+  { short: 'IMS',          full: 'IMS - Integrated Manufacturing Solutions, LLC' },
+  { short: 'IZZA',         full: 'IZZA Manufacturing' },
+  { short: 'Kappers',      full: 'Kappers Fabricating Inc. (KFI)' },
+  { short: 'Landscape',    full: 'Landscape Structures Inc' },
+  { short: 'LifeFitness',  full: 'LifeFitness Consumer Division' },
+  { short: 'Marksman',     full: 'Marksman Metals Co. Inc.' },
+  { short: 'Nystrom',      full: 'Nystrom Building Products' },
+  { short: 'Preferred',    full: 'Preferred Powder Coating' },
+  { short: 'Prime Design', full: 'Prime Design' },
+  { short: 'Pro Mfg',      full: 'Pro Manufacturing, Inc.' },
+  { short: 'Snap-on',      full: 'Snap-on Tools' },
+  { short: 'Standard Iron',full: 'Standard Iron' },
+  { short: 'Trystar',      full: 'Trystar' },
+  { short: 'Twin City',    full: 'Twin City Powder Coating - TCPC' },
+  { short: 'Wenger',       full: 'Wenger Corporation' },
+  { short: 'Whirltronics', full: 'Whirltronics' }
+];
+
+// =====================================================================
+// INIT — fetch bootstrap data (routing, open orders, today's log) on load
+// =====================================================================
+window.addEventListener('load', function () {
+  if (location.search.indexOf('selftest') !== -1) { runSelfTest(); return; }
+
+  call('bootstrap', {}).then(function (res) {
+    if (!res || !res.ok) { showToast(res && res.error || 'bootstrap failed', 6000); return; }
+    _TODAY      = res.today;
+    _ALL_ORDERS = res.orders || {};
+    _TODAY_LOG  = res.log || null;
+    _PRELOAD    = res.routing || null;
+
+    var logDateEl = document.getElementById('logDate');
+    logDateEl.value = _TODAY;
+    // Allow browsing the Log back ~30 days, but no further forward than today.
+    logDateEl.max = _TODAY;
+    var minD = new Date(_TODAY + 'T00:00:00');
+    minD.setDate(minD.getDate() - 30);
+    logDateEl.min = minD.getFullYear() + '-' + pad2(minD.getMonth() + 1) + '-' + pad2(minD.getDate());
+
+    onRoutingLoaded(_PRELOAD);
+    if (_TODAY_LOG && _TODAY_LOG.entries) { renderLog(_TODAY_LOG); }
+    else { loadLog(); }
+  }).catch(function (err) {
+    showToast('Load failed (network/CORS): ' + err.message, 8000);
+    document.getElementById('logContent').innerHTML =
+      '<div class="loading-msg">Could not reach the server.<br>Check connection and reload.</div>';
+  });
+});
+
+function onRoutingLoaded(result) {
+  if (!result || !result.ok) {
+    showToast(result ? result.error : 'getRoutingData failed', 5000);
+    return;
+  }
+  allCustomers = result.customers || [];
+  var input = document.getElementById('customerInput');
+  input.disabled = false;
+  input.placeholder = 'Start typing customer name…';
+  renderQuickGrid(false);
+}
+
+function renderQuickGrid(loading) {
+  var grid = document.getElementById('quickGrid');
+  grid.innerHTML = TOP_CUSTOMERS.map(function (tc) {
+    if (loading) {
+      return '<button class="quick-btn loading" disabled>' + esc(tc.short) + '</button>';
+    }
+    var escaped = JSON.stringify(tc.full).replace(/"/g, '&quot;');
+    return '<button class="quick-btn" onclick="selectTopCustomer(' + escaped + ')">'
+      + esc(tc.short) + '</button>';
+  }).join('');
+}
+
+function selectTopCustomer(fullName) {
+  var q = fullName.toLowerCase();
+  var match = allCustomers.find(function (c) {
+    return c.name.toLowerCase() === q ||
+           c.aliases.some(function (a) { return a.toLowerCase() === q; });
+  });
+  selectCustomer(match ? match.name : fullName);
+}
+
+// =====================================================================
+// TABS
+// =====================================================================
+function switchTab(tab) {
+  ['intake', 'log'].forEach(function (id) {
+    document.getElementById('tab-' + id).classList.toggle('active', id === tab);
+    document.getElementById('page-' + id).classList.toggle('active', id === tab);
+  });
+  document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
+  if (tab === 'log') loadLog();
+}
+
+// =====================================================================
+// CUSTOMER SEARCH
+// =====================================================================
+function onSearchInput(val) {
+  var q = val.toLowerCase().trim();
+  var dd = document.getElementById('dropdown');
+  if (!q) { dd.classList.remove('open'); return; }
+
+  var matches = allCustomers.filter(function (c) {
+    return c.aliases.some(function (a) { return a.toLowerCase().indexOf(q) !== -1; });
+  }).slice(0, 10);
+
+  if (!matches.length) {
+    var trimmed = val.trim();
+    var escapedVal = JSON.stringify(trimmed).replace(/"/g, '&quot;');
+    dd.innerHTML = '<div class="dropdown-item dropdown-freeform" onclick="selectCustomer(' + escapedVal + ')">Use &ldquo;' + esc(trimmed) + '&rdquo;</div>';
+  } else {
+    dd.innerHTML = matches.map(function (c) {
+      return '<div class="dropdown-item" onclick="selectCustomer(' + JSON.stringify(c.name).replace(/"/g, '&quot;') + ')">'
+        + esc(c.name) + '</div>';
+    }).join('');
+  }
+  dd.classList.add('open');
+}
+
+function onSearchFocus() {
+  var val = document.getElementById('customerInput').value;
+  if (val.trim()) onSearchInput(val);
+}
+
+function selectCustomer(name) {
+  selectedCust = allCustomers.find(function (c) { return c.name === name; }) || { name: name, aliases: [name], items: [], staffNote: '' };
+
+  // Hide search, show badge
+  document.getElementById('quickSection').style.display = 'none';
+  document.getElementById('searchWrap').style.display = 'none';
+  document.getElementById('dropdown').classList.remove('open');
+  var badge = document.getElementById('customerBadge');
+  badge.classList.add('show');
+  document.getElementById('badgeName').textContent = name;
+
+  // Fresh start for this customer — clear any PO/items left over from a prior selection.
+  itemRows = [];
+  document.getElementById('poInput').value = '';
+
+  loadOpenOrders(name);
+
+  // Chips
+  var items = selectedCust.items || [];
+  var ss    = document.getElementById('suggestionsSection');
+  var chipsEl = document.getElementById('chips');
+  if (items.length) {
+    var hasImages = items.some(function (it) { return it && it.imageId; });
+    if (hasImages) {
+      chipsEl.className = 'chips-img-grid';
+      chipsEl.innerHTML = items.map(function (it) {
+        var name      = it.name || it;
+        var imageId   = it.imageId || '';
+        var nameEsc   = esc(name);
+        var nameJson  = JSON.stringify(name).replace(/"/g, '&quot;');
+        var imgHtml   = imageId
+          ? '<img class="chip-card-img" src="https://drive.google.com/thumbnail?id=' + imageId + '&sz=w280" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'">'
+            + '<div class="chip-card-placeholder" style="display:none">&#128247;</div>'
+          : '<div class="chip-card-placeholder">&#128247;</div>';
+        return '<div class="chip-card" onclick="addChip(' + nameJson + ')">'
+          + imgHtml
+          + '<div class="chip-card-label">' + nameEsc + '</div>'
+          + '</div>';
+      }).join('');
+    } else {
+      chipsEl.className = 'chips-wrap';
+      chipsEl.innerHTML = items.map(function (it) {
+        var name     = it.name || it;
+        var nameEsc  = esc(name);
+        var nameJson = JSON.stringify(name).replace(/"/g, '&quot;');
+        return '<div class="chip" onclick="addChip(' + nameJson + ')">' + nameEsc + '</div>';
+      }).join('');
+    }
+    ss.style.display = 'block';
+  } else {
+    ss.style.display = 'none';
+  }
+
+  // PO hint from staff note
+  var hint = selectedCust.staffNote || '';
+  document.getElementById('poHint').textContent = hint;
+  document.getElementById('poInput').placeholder = hint || 'Optional';
+
+  // Show items/PO/notes/submit sections
+  document.getElementById('itemsSection').style.display = 'block';
+  document.getElementById('poSection').style.display = 'block';
+  document.getElementById('notesSection').style.display = 'block';
+  document.getElementById('submitBtn').style.display = 'block';
+
+  renderItemList();
+}
+
+function clearCustomer() {
+  selectedCust = null;
+  itemRows = [];
+  openOrders = [];
+  selectedOrderIdxs = [];
+  document.getElementById('openOrdersSection').style.display = 'none';
+  document.getElementById('quickSection').style.display = 'block';
+  document.getElementById('searchWrap').style.display = 'block';
+  document.getElementById('customerInput').value = '';
+  document.getElementById('customerBadge').classList.remove('show');
+  document.getElementById('suggestionsSection').style.display = 'none';
+  document.getElementById('itemsSection').style.display = 'none';
+  document.getElementById('poSection').style.display = 'none';
+  document.getElementById('notesSection').style.display = 'none';
+  document.getElementById('notesInput').value = '';
+  document.getElementById('submitBtn').style.display = 'none';
+  document.getElementById('poInput').placeholder = 'Optional';
+  renderItemList();
+}
+
+// Close dropdown on outside tap
+document.addEventListener('click', function (e) {
+  var wrap = document.getElementById('searchWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('dropdown').classList.remove('open');
+  }
+});
+
+// =====================================================================
+// ITEMS
+// =====================================================================
+function addChip(name) {
+  var row = itemRows.find(function (r) { return r.name === name; });
+  if (row) { row.qty++; }
+  else { itemRows.push({ name: name, qty: 1 }); }
+  renderItemList();
+}
+
+function addCustomItem() {
+  var input = document.getElementById('customItem');
+  var name  = input.value.trim();
+  if (!name) return;
+  var row = itemRows.find(function (r) { return r.name.toLowerCase() === name.toLowerCase(); });
+  if (row) { row.qty++; }
+  else { itemRows.push({ name: name, qty: 1 }); }
+  input.value = '';
+  renderItemList();
+}
+
+function changeQty(idx, delta) {
+  itemRows[idx].qty = Math.max(0, itemRows[idx].qty + delta);
+  renderItemList();
+}
+
+function setQty(idx, val) {
+  var n = parseInt(val, 10);
+  if (!isNaN(n) && n >= 0) itemRows[idx].qty = n;
+}
+
+function resetQty(idx, input) {
+  var n = parseInt(input.value, 10);
+  if (isNaN(n) || n < 0) input.value = itemRows[idx].qty;
+}
+
+function removeItem(idx) {
+  itemRows.splice(idx, 1);
+  renderItemList();
+}
+
+function renderItemList() {
+  var el = document.getElementById('itemList');
+  if (!itemRows.length) { el.innerHTML = ''; return; }
+  el.innerHTML = itemRows.map(function (r, i) {
+    return '<div class="item-row">'
+      +   '<div class="item-name">' + esc(r.name) + '</div>'
+      +   '<div class="qty-row">'
+      +     '<button class="qty-btn" onclick="changeQty(' + i + ', -1)">−</button>'
+      +     '<input class="qty-val" type="number" min="1" value="' + r.qty + '" oninput="setQty(' + i + ',this.value)" onblur="resetQty(' + i + ',this)">'
+      +     '<button class="qty-btn" onclick="changeQty(' + i + ', 1)">+</button>'
+      +   '</div>'
+      +   '<button class="remove-btn" onclick="removeItem(' + i + ')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+// =====================================================================
+// OPEN ORDERS
+// =====================================================================
+function loadOpenOrders(customerName) {
+  openOrders = [];
+  selectedOrderIdxs = [];
+  var section = document.getElementById('openOrdersSection');
+
+  // Filter client-side from data baked in at page load — no server round-trip.
+  var norm = function(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ''); };
+  var cn   = norm(customerName);
+  var raw  = _ALL_ORDERS[customerName];
+  if (!raw) {
+    var keys = Object.keys(_ALL_ORDERS);
+    for (var i = 0; i < keys.length; i++) {
+      if (norm(keys[i]) === cn) { raw = _ALL_ORDERS[keys[i]]; break; }
+    }
+  }
+  if (raw && raw.length) {
+    var hasOpenQty = function (o) {
+      var its = o.items || [];
+      // No BOM on file — can't tell, keep it visible.
+      if (!its.length) return true;
+      // Hide if every item has been received (in progress or completed) in Steelhead.
+      return its.some(function (it) { return it.count > (it.completed || 0) + (it.in_progress || 0); });
+    };
+    var reg = raw.filter(function (o) { return !o.is_blanket && hasOpenQty(o); });
+    var bl  = raw.filter(function (o) { return  o.is_blanket; });
+    openOrders = reg.concat(bl);
+    renderOpenOrders();
+  } else {
+    section.style.display = 'none';
+  }
+}
+
+function renderOpenOrders() {
+  if (!openOrders.length) { document.getElementById('openOrdersSection').style.display = 'none'; return; }
+  var allSelected = selectedOrderIdxs.length === openOrders.length;
+  document.getElementById('selectAllBtn').textContent = allSelected ? 'Clear all' : 'Select all';
+  var container = document.getElementById('openOrdersBtns');
+  container.innerHTML = openOrders.map(function (o, i) {
+    var isSel    = selectedOrderIdxs.indexOf(i) !== -1;
+    var nonZero  = (o.items || []).filter(function (it) { return it.count > 0 || o.is_blanket; });
+    var summary  = nonZero.length
+      ? nonZero.slice(0, 4).map(function (it) { return it.part_number; }).join(', ')
+        + (nonZero.length > 4 ? ', …' : '')
+      : 'No items on file';
+    var cls = 'order-btn' + (isSel ? ' selected' : '') + (o.is_blanket ? ' blanket' : '');
+    var check = isSel ? '✓' : '';
+    var tag   = o.is_blanket ? '<span class="order-tag">blanket</span>' : '';
+    return '<button class="' + cls + '" onclick="selectOrder(' + i + ')">'
+      + '<div class="order-check">' + check + '</div>'
+      + '<div class="order-body">'
+      +   '<div class="order-po">' + esc(o.po_number) + tag + '</div>'
+      +   '<div class="order-items">' + esc(summary) + '</div>'
+      + '</div>'
+      + '</button>';
+  }).join('');
+  document.getElementById('openOrdersSection').style.display = 'block';
+}
+
+function selectOrder(idx) {
+  var pos = selectedOrderIdxs.indexOf(idx);
+  if (pos === -1) { selectedOrderIdxs.push(idx); }
+  else            { selectedOrderIdxs.splice(pos, 1); }
+  renderOpenOrders();
+  updateFromSelectedOrders();
+}
+
+function selectAllOrders() {
+  if (selectedOrderIdxs.length === openOrders.length) {
+    selectedOrderIdxs = [];
+  } else {
+    selectedOrderIdxs = openOrders.map(function (_, i) { return i; });
+  }
+  renderOpenOrders();
+  updateFromSelectedOrders();
+}
+
+function updateFromSelectedOrders() {
+  if (!selectedOrderIdxs.length) {
+    document.getElementById('poInput').value = '';
+    itemRows = [];
+    renderItemList();
+    return;
+  }
+  // PO field: all selected PO numbers joined
+  document.getElementById('poInput').value = selectedOrderIdxs
+    .map(function (i) { return openOrders[i].po_number; }).join(', ');
+  // Items: one row per unique part name. Default qty = open items left to receive
+  // (count − in_progress − completed), summed across selected POs for the same part.
+  // For blanket SOs all items are included but default to 0 (count is TBD/0).
+  // For regular SOs, skip items with count=0 (not on this shipment).
+  var itemMap = {};   // part_number -> default qty
+  selectedOrderIdxs.forEach(function (i) {
+    var isBlanket = openOrders[i].is_blanket;
+    (openOrders[i].items || []).forEach(function (it) {
+      if (!(it.count > 0 || isBlanket)) return;
+      if (!(it.part_number in itemMap)) itemMap[it.part_number] = 0;
+      if (!isBlanket) {
+        var open = (Number(it.count) || 0) - (Number(it.in_progress) || 0) - (Number(it.completed) || 0);
+        if (open > 0) itemMap[it.part_number] += open;
+      }
+    });
+  });
+  itemRows = Object.keys(itemMap).map(function (name) {
+    return { name: name, qty: itemMap[name] };
+  });
+  renderItemList();
+  document.getElementById('itemsSection').style.display = 'block';
+}
+
+// =====================================================================
+// SUBMIT
+// =====================================================================
+function onSubmit() {
+  if (!selectedCust) { showToast('Select a customer first', 3000); return; }
+
+  // Multi-order: submit one entry per selected order using that order's items
+  if (selectedOrderIdxs.length > 1) {
+    submitMultipleOrders();
+    return;
+  }
+
+  var activeRows = itemRows.filter(function (r) { return r.qty > 0; });
+  if (!activeRows.length) { showToast('Add at least one item', 3000); return; }
+  var description = activeRows.map(function (r) { return r.qty + '× ' + r.name; }).join(', ');
+  var poNum = document.getElementById('poInput').value.trim();
+  var note  = document.getElementById('notesInput').value.trim();
+  var now  = new Date();
+  var date = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+  var btn  = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note })
+    .then(function (result) {
+      btn.disabled = false; btn.textContent = 'Submit';
+      if (result && result.ok) {
+        showToast('✓ Received: ' + description, 3500);
+        clearCustomer();
+        document.getElementById('poInput').value = '';
+        switchTab('log');
+      } else { showToast('Error: ' + (result && result.error || 'unknown'), 5000); }
+    })
+    .catch(function (e) {
+      btn.disabled = false; btn.textContent = 'Submit';
+      showToast('Error: ' + e.message, 5000);
+    });
+}
+
+function submitMultipleOrders() {
+  var orders = selectedOrderIdxs.map(function (i) { return openOrders[i]; });
+  var now    = new Date();
+  var date   = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+  var note   = document.getElementById('notesInput').value.trim();
+  var btn    = document.getElementById('submitBtn');
+  var total  = orders.length;
+  var done   = 0;
+  var errors = 0;
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting 1 of ' + total + '…';
+
+  function submitNext(idx) {
+    if (idx >= total) {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+      if (errors) {
+        showToast(done + ' of ' + total + ' submitted (' + errors + ' failed)', 5000);
+      } else {
+        showToast('✓ ' + total + ' POs received', 3500);
+        clearCustomer();
+        switchTab('log');
+      }
+      return;
+    }
+    var o    = orders[idx];
+    // Use the quantities the worker actually typed in the merged item list,
+    // matched back to this PO by part name. qty 0 = not received → omit.
+    // Falls back to 'Received' if nothing on this PO was counted, so every
+    // selected PO still gets one entry.
+    var lines = (o.items || [])
+      .filter(function (it) { return it.count > 0 || o.is_blanket; })
+      .map(function (it) {
+        var row = itemRows.find(function (r) { return r.name === it.part_number; });
+        return (row && row.qty > 0) ? (row.qty + '× ' + it.part_number) : null;
+      })
+      .filter(Boolean);
+    var desc = lines.length ? lines.join(', ') : 'Received';
+    btn.textContent = 'Submitting ' + (idx + 1) + ' of ' + total + '…';
+    call('submitReceiving', { date: date, customer: selectedCust.name, description: desc, poNum: o.po_number, note: note })
+      .then(function (result) {
+        if (result && result.ok) { done++; } else { errors++; }
+        submitNext(idx + 1);
+      })
+      .catch(function () { errors++; submitNext(idx + 1); });
+  }
+
+  submitNext(0);
+}
+
+// =====================================================================
+// LOG
+// =====================================================================
+function loadLog() {
+  var date = document.getElementById('logDate').value;
+  document.getElementById('logContent').innerHTML = '<div class="loading-msg">Loading…</div>';
+  call('getTodayReceiving', { date: date })
+    .then(renderLog)
+    .catch(function (e) {
+      document.getElementById('logContent').innerHTML = '<div class="loading-msg">Error: ' + esc(e.message) + '</div>';
+    });
+}
+
+function renderLog(result) {
+  var entries = (result && result.entries) || [];
+  if (!entries.length) {
+    document.getElementById('logContent').innerHTML = '<div class="log-empty">Nothing received on this date.</div>';
+    return;
+  }
+  // Newest first
+  var reversed = entries.slice().reverse();
+  var selVal = document.getElementById('logDate').value;
+  var parts = selVal ? selVal.split('-') : null;
+  var d = parts ? new Date(+parts[0], +parts[1] - 1, +parts[2]) : new Date();
+  var dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  document.getElementById('logContent').innerHTML =
+    '<div class="log-date-header">' + esc(dateStr) + '</div>'
+    + '<div class="log-table-wrap"><table class="log-table">'
+    + '<thead><tr>'
+    + '<th class="log-col-customer">Customer</th>'
+    + '<th class="log-col-po">PO</th>'
+    + '<th class="log-col-items">Items</th>'
+    + '</tr></thead><tbody>'
+    + reversed.map(function (e) {
+      var po = e.poNum ? esc(e.poNum) : '<span style="color:#d1d5db">—</span>';
+      if (e.done) po += ' <span class="log-done">✓</span>';
+      return '<tr class="' + (e.done ? 'done' : '') + '">'
+        + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
+        + '<td class="log-col-po">' + po + '</td>'
+        + '<td class="log-col-items">' + esc(e.description) + '</td>'
+        + '</tr>';
+    }).join('')
+    + '</tbody></table></div>';
+}
+
+// =====================================================================
+// UTILS
+// =====================================================================
+function showToast(msg, ms) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove('visible'); }, ms || 3000);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+
+// =====================================================================
+// PO PHOTO CAPTURE
+// =====================================================================
+var _camStream = null;
+
+function triggerPoCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Browser doesn't support getUserMedia — fall back to native camera/file picker
+    document.getElementById('poPhotoInput').click();
+    return;
+  }
+  var overlay = document.getElementById('camOverlay');
+  var errDiv  = document.getElementById('camError');
+  errDiv.className = 'cam-error';
+  errDiv.textContent = '';
+  overlay.classList.add('open');
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(stream) {
+      _camStream = stream;
+      var vid = document.getElementById('camVideo');
+      vid.srcObject = stream;
+      vid.style.display = 'block';
+    })
+    .catch(function(err) {
+      // Camera permission denied or unavailable — show clear instructions
+      var vid = document.getElementById('camVideo');
+      vid.style.display = 'none';
+      var msg = '';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Camera access was blocked.\n\nTo fix: tap the camera or lock icon in your browser\'s address bar → set Camera to "Allow" → refresh the page, then try again.\n\nOr tap "Upload file" to select a photo from your device.';
+      } else if (err.name === 'NotFoundError') {
+        msg = 'No camera found on this device. Use "Upload file" to select a photo instead.';
+      } else {
+        msg = 'Could not start camera (' + err.name + '). Use "Upload file" to select a photo instead.';
+      }
+      errDiv.textContent = msg;
+      errDiv.style.whiteSpace = 'pre-line';
+      errDiv.classList.add('show');
+    });
+}
+
+function closeCamera() {
+  if (_camStream) {
+    _camStream.getTracks().forEach(function(t) { t.stop(); });
+    _camStream = null;
+  }
+  var vid = document.getElementById('camVideo');
+  vid.srcObject = null;
+  document.getElementById('camOverlay').classList.remove('open');
+}
+
+function captureFromCamera() {
+  var vid = document.getElementById('camVideo');
+  if (!vid.videoWidth) return;
+  var canvas = document.createElement('canvas');
+  var MAX = 1800;
+  var w = vid.videoWidth, h = vid.videoHeight;
+  if (w > MAX || h > MAX) {
+    var scale = MAX / Math.max(w, h);
+    canvas.width  = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+  } else {
+    canvas.width = w; canvas.height = h;
+  }
+  canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+  closeCamera();
+  processImageDataUrl(canvas.toDataURL('image/jpeg', 0.88));
+}
+
+function useCameraFallback() {
+  closeCamera();
+  document.getElementById('poPhotoInput').click();
+}
+
+function onPoPhotoSelected(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    input.value = '';
+    // Resize via Image element same as camera path
+    var img2 = new Image();
+    img2.onload = function() {
+      var MAX = 1800;
+      var w = img2.width, h = img2.height;
+      var canvas = document.createElement('canvas');
+      if (w > MAX || h > MAX) {
+        var scale = MAX / Math.max(w, h);
+        canvas.width  = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+      } else {
+        canvas.width = w; canvas.height = h;
+      }
+      canvas.getContext('2d').drawImage(img2, 0, 0, canvas.width, canvas.height);
+      processImageDataUrl(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img2.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function processImageDataUrl(dataUrl) {
+  var btn = document.getElementById('snapPoBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sending…';
+  var base64 = dataUrl.split(',')[1];
+  call('sendPoPhoto', { imageBase64: base64, mimeType: 'image/jpeg' })
+    .then(function(result) {
+      btn.disabled = false;
+      btn.textContent = '📷 Snap PO Photo';
+      if (result && result.ok) {
+        showToast('✓ PO photo sent — processing in ~10 min', 5000);
+      } else {
+        showToast('Error: ' + (result && result.error || 'unknown'), 5000);
+      }
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      btn.textContent = '📷 Snap PO Photo';
+      showToast('Error: ' + e.message, 5000);
+    });
+}
+
+// =====================================================================
+// SELF-TEST — open ?selftest=1 to verify the full cross-origin round-trip.
+// Runs ping → bootstrap → sendPoPhoto(test) → purgeTest and shows pass/fail.
+// The test photo lands in PO Inbox/TEST (never the prefix Steelhead scans) and
+// is trashed by the purge step, so this is safe to run against production.
+// =====================================================================
+function runSelfTest() {
+  var steps = ['ping', 'bootstrap', 'sendPoPhoto (test)', 'purgeTest cleanup'];
+  document.body.innerHTML =
+    '<div style="font:15px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;padding:24px;max-width:640px;margin:0 auto">'
+    + '<h2 style="margin-bottom:6px">Receiving Intake — self-test</h2>'
+    + '<p style="color:#6b7280;margin-bottom:16px">Cross-origin backend round-trip from <b>' + esc(location.origin) + '</b></p>'
+    + '<div id="st-rows"></div></div>';
+  var rows = document.getElementById('st-rows');
+  var els = {};
+  steps.forEach(function (s) {
+    var d = document.createElement('div');
+    d.style.cssText = 'padding:12px 0;border-bottom:1px solid #eee';
+    d.innerHTML = '<b style="color:#9ca3af">… ' + esc(s) + '</b>'
+      + '<div style="color:#6b7280;font-size:13px;margin-top:2px"></div>';
+    rows.appendChild(d);
+    els[s] = d;
+  });
+  function set(step, ok, detail) {
+    var d = els[step];
+    var b = d.querySelector('b');
+    b.style.color = ok ? '#16a34a' : '#dc2626';
+    b.textContent = (ok ? '✓ ' : '✗ ') + step;
+    d.querySelector('div').textContent = detail || '';
+  }
+
+  call('ping', {}).then(function (r) {
+    set('ping', !!(r && r.ok), r && (r.time || r.error));
+    return call('bootstrap', {});
+  }).then(function (r) {
+    var n  = r && r.routing && r.routing.customers ? r.routing.customers.length : 0;
+    var oc = r && r.orders ? Object.keys(r.orders).length : 0;
+    set('bootstrap', !!(r && r.ok),
+      r && r.ok ? (n + ' customers · today ' + r.today + ' · ' + oc + ' customers w/ open orders') : (r && r.error));
+    // Synthesize a tiny valid JPEG via canvas — no fragile hardcoded base64.
+    var c = document.createElement('canvas'); c.width = 4; c.height = 4;
+    var cx = c.getContext('2d'); cx.fillStyle = '#cc3333'; cx.fillRect(0, 0, 4, 4);
+    var b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+    return call('sendPoPhoto', { imageBase64: b64, mimeType: 'image/jpeg', test: true });
+  }).then(function (r) {
+    set('sendPoPhoto (test)', !!(r && r.ok),
+      r && r.ok ? (r.name + ' · ' + r.bytes + ' B → PO Inbox/TEST') : (r && r.error));
+    return call('purgeTest', {});
+  }).then(function (r) {
+    set('purgeTest cleanup', !!(r && r.ok), r && r.ok ? ('trashed ' + r.purged + ' test file(s)') : (r && r.error));
+  }).catch(function (e) {
+    var d = document.createElement('div');
+    d.style.cssText = 'color:#dc2626;padding:14px 0;font-weight:600';
+    d.textContent = '✗ Fetch failed (most likely CORS or network): ' + e.message;
+    rows.appendChild(d);
+  });
+}
+</script>
+</body>
+</html>
