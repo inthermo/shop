@@ -32,7 +32,9 @@ Add `?selftest=1` to any tool's URL to run its cross-origin round-trip self-test
 
 ## Hosting
 
-- **Now (preview):** mirrored into the `inthermo/website` repo at `/shop/receiving/` as a stopgap,
-  reachable at `inthermo.github.io/website/shop/receiving/`, until this repo gets its own Pages.
-- **Target:** push this repo to `inthermo/shop`, enable Pages, point `tools.myinthermo.com` at it.
-  Requires `gh auth login` (creating a new repo needs auth that SSH-to-existing-repos doesn't give).
+- **Live:** GitHub repo `inthermo/shop` (public), GitHub Pages from `main` / root.
+  Receiving Intake → **https://inthermo.github.io/shop/receiving/**
+- **Next:** point `tools.myinthermo.com` at it (add a DNS CNAME → `inthermo.github.io` + a
+  `CNAME` file in this repo). Deferred until the DNS cutover.
+
+Push path: `git push` over Windows SSH (`git@github.com:inthermo/shop.git`).
