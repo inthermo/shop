@@ -1170,8 +1170,11 @@ function updateFromSelectedOrders() {
   // PO field: all selected PO numbers joined
   document.getElementById('poInput').value = selectedOrderIdxs
     .map(function (i) { return openOrders[i].po_number; }).join(', ');
-  // Items: one row per unique part name. Default qty = open items left to receive
-  // (count − in_progress − completed), summed across selected POs for the same part.
+  // Items: one row per unique part name. Default qty = the SO line's ordered
+  // product count, summed across selected POs for the same part. (We intentionally
+  // do NOT subtract in_progress: Steelhead marks a line "in progress" as soon as its
+  // SO exists, which would zero out the prefill for any already-entered PO. The shop
+  // wants the ordered count prefilled, then adjusts to the physical count on arrival.)
   // For blanket SOs all items are included but default to 0 (count is TBD/0).
   // For regular SOs, skip items with count=0 (not on this shipment).
   var itemMap = {};   // part_number -> default qty
@@ -1181,8 +1184,7 @@ function updateFromSelectedOrders() {
       if (!(it.count > 0 || isBlanket)) return;
       if (!(it.part_number in itemMap)) itemMap[it.part_number] = 0;
       if (!isBlanket) {
-        var open = (Number(it.count) || 0) - (Number(it.in_progress) || 0) - (Number(it.completed) || 0);
-        if (open > 0) itemMap[it.part_number] += open;
+        itemMap[it.part_number] += (Number(it.count) || 0);
       }
     });
   });
