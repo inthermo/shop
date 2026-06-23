@@ -158,6 +158,35 @@
     }
     .badge-clear:active { color: #e63946; }
 
+    /* ---- CUSTOMER NOTES & INSTRUCTIONS BANNER ---- */
+    /* Per-customer staff instructions (customer_master col G), surfaced prominently
+       when a customer is selected so special handling instructions can't be missed. */
+    .cust-notes {
+      display: none;
+      background: #fffbeb;
+      border: 2px solid #f59e0b;
+      border-left-width: 7px;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-top: 12px;
+    }
+    .cust-notes.show { display: block; }
+    .cust-notes-label {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #b45309;
+      margin-bottom: 5px;
+    }
+    .cust-notes-body {
+      font-size: 18px;
+      line-height: 1.45;
+      color: #1a1a2e;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     /* ---- CHIPS ---- */
     .chips-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
     .chip {
@@ -696,6 +725,11 @@
     <button class="badge-clear" onclick="clearCustomer()" title="Change customer">✕</button>
   </div>
 
+  <div class="cust-notes" id="custNotes">
+    <div class="cust-notes-label">⚠ Notes &amp; Instructions</div>
+    <div class="cust-notes-body" id="custNotesBody"></div>
+  </div>
+
   <div id="openOrdersSection" style="display:none">
     <div class="orders-header">
       <div class="section-label">Open orders</div>
@@ -940,6 +974,17 @@ function selectCustomer(name) {
   badge.classList.add('show');
   document.getElementById('badgeName').textContent = name;
 
+  // Per-customer notes & instructions (staffNote / customer_master col G) — shown as a
+  // prominent banner so any custom handling instructions are visible to the worker.
+  var notesEl  = document.getElementById('custNotes');
+  var noteText = (selectedCust.staffNote || '').trim();
+  if (noteText) {
+    document.getElementById('custNotesBody').textContent = noteText;
+    notesEl.classList.add('show');
+  } else {
+    notesEl.classList.remove('show');
+  }
+
   // Fresh start for this customer — clear any PO/items left over from a prior selection.
   itemRows = [];
   document.getElementById('poInput').value = '';
@@ -982,10 +1027,10 @@ function selectCustomer(name) {
     ss.style.display = 'none';
   }
 
-  // PO hint from staff note
-  var hint = selectedCust.staffNote || '';
-  document.getElementById('poHint').textContent = hint;
-  document.getElementById('poInput').placeholder = hint || 'Optional';
+  // The staff note now lives in the prominent Notes & Instructions banner above,
+  // so the PO field keeps a plain placeholder rather than echoing the same text.
+  document.getElementById('poHint').textContent = '';
+  document.getElementById('poInput').placeholder = 'Optional';
 
   // Show items/PO/notes/submit sections
   document.getElementById('itemsSection').style.display = 'block';
@@ -1006,6 +1051,7 @@ function clearCustomer() {
   document.getElementById('searchWrap').style.display = 'block';
   document.getElementById('customerInput').value = '';
   document.getElementById('customerBadge').classList.remove('show');
+  document.getElementById('custNotes').classList.remove('show');
   document.getElementById('suggestionsSection').style.display = 'none';
   document.getElementById('itemsSection').style.display = 'none';
   document.getElementById('poSection').style.display = 'none';
