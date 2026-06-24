@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Truck Planner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5; color: #1a1a2e; min-height: 100vh;
+      -webkit-user-select: none; user-select: none;
+    }
+
+    /* ---- top bar ---- */
+    .bar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      background: #1a1a2e; color: #fff; padding: 12px 16px;
+      position: sticky; top: 0; z-index: 30;
+    }
+    .bar h1 { font-size: 18px; font-weight: 700; margin-right: auto; }
+    .bar .day { font-size: 14px; color: #b9c0d0; font-weight: 500; }
+    .bar input[type=date] {
+      font-size: 14px; padding: 7px 9px; border-radius: 8px; border: none;
+    }
+    .bar button {
+      font-size: 14px; font-weight: 600; padding: 9px 14px; border: none;
+      border-radius: 8px; cursor: pointer; color: #fff; background: #3a4a7a;
+    }
+    .bar button.save { background: #1e9e5a; }
+    .bar button:active { opacity: .8; }
+    #status { font-size: 13px; color: #b9c0d0; min-width: 70px; }
+
+    /* ---- layout ---- */
+    .panels { display: flex; gap: 14px; padding: 14px; align-items: flex-start; }
+    @media (max-width: 860px) { .panels { flex-direction: column; } .panels > .panel { width: 100%; } }
+    .panel {
+      flex: 1; background: #fff; border-radius: 14px; padding: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .panel-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .panel-head .title { font-size: 17px; font-weight: 700; }
+    .panel-head .start { font-size: 13px; color: #6b7280; }
+    .panel-head .tot { margin-left: auto; font-size: 13px; color: #374151; font-weight: 600; }
+
+    /* ---- customer strip (count editor) ---- */
+    .custstrip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .chip {
+      display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px;
+      border-radius: 20px; font-size: 12.5px; font-weight: 600; color: #fff;
+    }
+    .chip .nm { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip .stp {
+      width: 22px; height: 22px; border-radius: 50%; border: none; cursor: pointer;
+      background: rgba(255,255,255,.28); color: #fff; font-size: 15px; font-weight: 700; line-height: 1;
+    }
+    .chip .ct { min-width: 16px; text-align: center; }
+
+    /* ---- tray + grid ---- */
+    .tray {
+      min-height: 46px; border: 2px dashed #c8cdd8; border-radius: 10px;
+      padding: 6px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px;
+      align-content: flex-start;
+    }
+    .tray .lbl, .col .lbl {
+      width: 100%; font-size: 11px; font-weight: 700; color: #9098a8;
+      text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px;
+    }
+    .grid { display: flex; gap: 8px; }
+    .col {
+      flex: 1; min-height: 120px; background: #f6f7fa; border: 2px solid #e6e9f0;
+      border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px;
+      align-content: flex-start;
+    }
+    .col.drop-hot { border-color: #3a4a7a; background: #eef1fb; }
+
+    .tile {
+      touch-action: none; cursor: grab;
+      padding: 8px 10px; border-radius: 9px; color: #fff; font-size: 13px; font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,.15); line-height: 1.15;
+      display: flex; align-items: center; min-height: 34px;
+    }
+    .tile.dragging { opacity: .35; }
+    .tile.ghost {
+      position: fixed; z-index: 100; pointer-events: none; opacity: .92;
+      box-shadow: 0 6px 18px rgba(0,0,0,.3); transform: scale(1.05);
+    }
+    .tray .tile { flex: 0 0 auto; }
+    .col .tile { width: 100%; }
+
+    #tip {
+      position: fixed; z-index: 200; max-width: 280px; background: #1a1a2e; color: #fff;
+      font-size: 12.5px; line-height: 1.4; padding: 10px 12px; border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.35); display: none;
+    }
+    #tip b { display: block; margin-bottom: 4px; }
+    #tip .row { color: #cfd6e6; }
+    .empty { padding: 40px 16px; text-align: center; color: #6b7280; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <h1>Truck Planner</h1>
+    <span class="day" id="dayLabel"></span>
+    <input type="date" id="datePick">
+    <button id="refreshBtn">Refresh</button>
+    <button class="save" id="saveBtn">Save</button>
+    <span id="status"></span>
+  </div>
+  <div id="root"><div class="empty">Loading…</div></div>
+  <div id="tip"></div>
+
+<script>
+// ===== backend =====
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycby28VVrPqOHYAVbROXipODf0lkNp5skNwxp8rZnT1wUGyvQsUb1Lpsfb5nAdmgxGEKfqg/exec';
+function call(op, payload) {
+  return fetch(BACKEND_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op: op, payload: payload || {} }),
+    redirect: 'follow'
+  }).then(function (r) { return r.json(); });
+}
+
+// ===== state =====
+// We only plan John's and Randy's FIRST runs; second runs the drivers load themselves.
+var COLS = ['tray', 'front', 'main', 'right'];
+var COL_LABELS = { tray: 'Unplaced racks', front: 'Front of Truck', main: 'Main', right: 'Right' };
+var serviceDate = '';
+var board = {};      // runKey -> { label, start, customers:{name->{short,color,received}}, cols:{col->[tile]} }
+var runOrder = [];   // ordered runKeys
+var tileSeq = 0;
+var saveTimer = null;
+
+function setStatus(s) { document.getElementById('status').textContent = s || ''; }
+
+// stable color per customer name
+function colorFor(name) {
+  var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return 'hsl(' + (h % 360) + ',55%,42%)';
+}
+
+function load(dateOverride) {
+  setStatus('loading…');
+  document.getElementById('root').innerHTML = '<div class="empty">Loading…</div>';
+  call('plan', dateOverride ? { date: dateOverride } : {}).then(function (d) {
+    if (!d || !d.ok) { document.getElementById('root').innerHTML = '<div class="empty">Error: ' + ((d && d.error) || 'no data') + '</div>'; setStatus(''); return; }
+    serviceDate = d.serviceDate;
+    document.getElementById('dayLabel').textContent = d.serviceDayName + ' ' + d.serviceDate;
+    document.getElementById('datePick').value = d.serviceDate;
+    buildBoard(d);
+    render();
+    setStatus('');
+  }).catch(function (e) {
+    document.getElementById('root').innerHTML = '<div class="empty">Network error. Tap Refresh.</div>'; setStatus('');
+  });
+}
+
+function buildBoard(d) {
+  board = {}; runOrder = [];
+  // first runs only
+  var firstRuns = (d.runs || []).filter(function (r) { return /1|first/i.test(r.run); });
+  var saved = d.arrangement && d.arrangement.arrangement;
+
+  firstRuns.forEach(function (r) {
+    var custs = {};
+    r.customers.forEach(function (c) {
+      custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name), received: c.received || [], rackCount: c.rackCount };
+    });
+    var cols = { tray: [], front: [], main: [], right: [] };
+    if (saved && saved[r.key]) {
+      // restore placements; tiles for customers no longer scheduled still render
+      COLS.forEach(function (col) {
+        (saved[r.key][col] || []).forEach(function (t) {
+          var nm = t.customer;
+          if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], rackCount: 0 };
+          cols[col].push({ id: ++tileSeq, customer: nm });
+        });
+      });
+    } else {
+      // seed tiles from rack counts into the tray
+      r.customers.forEach(function (c) {
+        for (var i = 0; i < (c.rackCount || 0); i++) cols.tray.push({ id: ++tileSeq, customer: c.name });
+      });
+    }
+    board[r.key] = { label: r.label, start: r.start, customers: custs, cols: cols };
+    runOrder.push(r.key);
+  });
+}
+
+// ===== render =====
+function fmtTime(t) {
+  if (!t) return '';
+  var p = t.split(':'); var h = parseInt(p[0], 10); var ap = h >= 12 ? 'PM' : 'AM';
+  var hh = ((h + 11) % 12) + 1; return hh + ':' + p[1] + ' ' + ap;
+}
+function tileCount(runKey, name) {
+  var n = 0, c = board[runKey].cols;
+  COLS.forEach(function (col) { c[col].forEach(function (t) { if (t.customer === name) n++; }); });
+  return n;
+}
+function render() {
+  if (!runOrder.length) { document.getElementById('root').innerHTML = '<div class="empty">No first-run customers scheduled for ' + serviceDate + '.</div>'; return; }
+  var html = '<div class="panels">';
+  runOrder.forEach(function (rk) {
+    var b = board[rk];
+    var total = COLS.reduce(function (s, col) { return s + b.cols[col].length; }, 0);
+    var placed = total - b.cols.tray.length;
+    html += '<div class="panel">';
+    html += '<div class="panel-head"><span class="title">' + esc(b.label) + '</span>'
+          + '<span class="start">' + fmtTime(b.start) + '</span>'
+          + '<span class="tot">' + placed + '/' + total + ' racks placed</span></div>';
+    // customer strip
+    html += '<div class="custstrip">';
+    Object.keys(b.customers).sort().forEach(function (nm) {
+      var cu = b.customers[nm];
+      html += '<span class="chip" style="background:' + cu.color + '">'
+            + '<span class="nm">' + esc(cu.short) + '</span>'
+            + '<button class="stp" onclick="adj(\'' + rk.replace(/'/g, "\\'") + '\',' + jq(nm) + ',-1)">–</button>'
+            + '<span class="ct" id="ct_' + cid(rk, nm) + '">' + tileCount(rk, nm) + '</span>'
+            + '<button class="stp" onclick="adj(\'' + rk.replace(/'/g, "\\'") + '\',' + jq(nm) + ',1)">+</button>'
+            + '</span>';
+    });
+    html += '</div>';
+    // tray
+    html += colHtml(rk, 'tray');
+    // grid
+    html += '<div class="grid">' + colHtml(rk, 'front') + colHtml(rk, 'main') + colHtml(rk, 'right') + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  document.getElementById('root').innerHTML = html;
+  bindTiles();
+}
+function colHtml(rk, col) {
+  var b = board[rk];
+  var cls = col === 'tray' ? 'tray' : 'col';
+  var h = '<div class="' + cls + '" data-run="' + esc(rk) + '" data-col="' + col + '">'
+        + '<span class="lbl">' + COL_LABELS[col] + '</span>';
+  b.cols[col].forEach(function (t) {
+    var cu = b.customers[t.customer];
+    h += '<div class="tile" data-id="' + t.id + '" data-run="' + esc(rk) + '" style="background:' + cu.color + '">' + esc(cu.short) + '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function jq(s) { return JSON.stringify(String(s)); }      // quoted JS string literal for inline handlers
+function cid(rk, nm) { return (rk + '_' + nm).replace(/[^a-z0-9]/gi, '_'); }
+
+// ===== count editing =====
+function adj(rk, name, delta) {
+  var cols = board[rk].cols;
+  if (delta > 0) {
+    cols.tray.push({ id: ++tileSeq, customer: name });
+  } else {
+    // remove one: prefer from tray, else from right/main/front
+    var order = ['tray', 'right', 'main', 'front'];
+    for (var i = 0; i < order.length; i++) {
+      var arr = cols[order[i]];
+      for (var j = arr.length - 1; j >= 0; j--) { if (arr[j].customer === name) { arr.splice(j, 1); render(); scheduleSave(); return; } }
+    }
+    return;
+  }
+  render(); scheduleSave();
+}
+
+// ===== drag (pointer-based: works for mouse + touch/iPad) =====
+var drag = null;
+function bindTiles() {
+  var tiles = document.querySelectorAll('.tile');
+  tiles.forEach(function (el) { el.addEventListener('pointerdown', onDown); });
+}
+function findTile(id) {
+  for (var ri = 0; ri < runOrder.length; ri++) {
+    var rk = runOrder[ri], cols = board[rk].cols;
+    for (var ci = 0; ci < COLS.length; ci++) {
+      var arr = cols[COLS[ci]];
+      for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return { rk: rk, col: COLS[ci], idx: i, tile: arr[i] };
+    }
+  }
+  return null;
+}
+function onDown(e) {
+  if (e.button != null && e.button !== 0) return;
+  var el = e.currentTarget;
+  var id = parseInt(el.getAttribute('data-id'), 10);
+  var run = el.getAttribute('data-run');
+  var startX = e.clientX, startY = e.clientY, started = false;
+  hideTip();
+  el.setPointerCapture(e.pointerId);
+  function move(ev) {
+    if (!started) {
+      if (Math.abs(ev.clientX - startX) < 6 && Math.abs(ev.clientY - startY) < 6) return;
+      started = true; begin(el, id, run, ev);
+    }
+    drag.ghost.style.left = (ev.clientX - drag.dx) + 'px';
+    drag.ghost.style.top = (ev.clientY - drag.dy) + 'px';
+    hot(ev.clientX, ev.clientY);
+    ev.preventDefault();
+  }
+  function up(ev) {
+    try { el.releasePointerCapture(e.pointerId); } catch (x) {}
+    el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+    if (started) finish(ev.clientX, ev.clientY);
+    else showTipFor(id, run, ev.clientX, ev.clientY);
+  }
+  el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+function begin(el, id, run, ev) {
+  var r = el.getBoundingClientRect();
+  var g = el.cloneNode(true); g.className = 'tile ghost';
+  g.style.width = r.width + 'px';
+  document.body.appendChild(g);
+  el.classList.add('dragging');
+  drag = { id: id, run: run, ghost: g, dx: ev.clientX - r.left, dy: ev.clientY - r.top, hotEl: null };
+}
+function hot(x, y) {
+  var el = document.elementFromPoint(x, y);
+  var col = el && el.closest ? el.closest('.col, .tray') : null;
+  if (col && col.getAttribute('data-run') !== drag.run) col = null;  // tiles stay within their run
+  if (drag.hotEl && drag.hotEl !== col) drag.hotEl.classList.remove('drop-hot');
+  if (col) col.classList.add('drop-hot');
+  drag.hotEl = col;
+}
+function finish(x, y) {
+  var src = findTile(drag.id);
+  var target = drag.hotEl;
+  if (src && target) {
+    var col = target.getAttribute('data-col');
+    var idx = insertIndex(target, y);
+    // remove from source
+    board[src.rk].cols[src.col].splice(src.idx, 1);
+    // adjust idx if same column and removing earlier shifts
+    var destArr = board[src.rk].cols[col];
+    if (src.col === col && src.idx < idx) idx--;
+    destArr.splice(Math.min(idx, destArr.length), 0, src.tile);
+  }
+  if (drag.hotEl) drag.hotEl.classList.remove('drop-hot');
+  if (drag.ghost) drag.ghost.remove();
+  drag = null;
+  render(); scheduleSave();
+}
+function insertIndex(colEl, y) {
+  var tiles = colEl.querySelectorAll('.tile:not(.dragging)');
+  for (var i = 0; i < tiles.length; i++) {
+    var r = tiles[i].getBoundingClientRect();
+    if (y < r.top + r.height / 2) return i;
+  }
+  return tiles.length;
+}
+
+// ===== tap detail =====
+function showTipFor(id, run, x, y) {
+  var t = findTile(id); if (!t) return;
+  var cu = board[run].customers[t.tile.customer];
+  var tip = document.getElementById('tip');
+  var rows = (cu.received || []).map(function (r) { return '<div class="row">' + esc(r.date) + ' &middot; ' + esc(r.desc) + '</div>'; }).join('');
+  tip.innerHTML = '<b>' + esc(t.tile.customer) + '</b>' + (rows || '<div class="row">No receiving detail.</div>');
+  tip.style.display = 'block';
+  var w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+  tip.style.top = Math.max(8, (y - h - 12 > 8 ? y - h - 12 : y + 16)) + 'px';
+}
+function hideTip() { document.getElementById('tip').style.display = 'none'; }
+document.addEventListener('pointerdown', function (e) { if (!e.target.closest || !e.target.closest('.tile')) hideTip(); }, true);
+
+// ===== save =====
+function arrangement() {
+  var out = {};
+  runOrder.forEach(function (rk) {
+    var o = {}; COLS.forEach(function (col) { o[col] = board[rk].cols[col].map(function (t) { return { customer: t.customer }; }); });
+    out[rk] = o;
+  });
+  return out;
+}
+function scheduleSave() { clearTimeout(saveTimer); setStatus('…'); saveTimer = setTimeout(doSave, 1200); }
+function doSave() {
+  setStatus('saving…');
+  call('save', { serviceDate: serviceDate, arrangement: arrangement() }).then(function (d) {
+    setStatus(d && d.ok ? 'saved ✓' : 'save failed');
+  }).catch(function () { setStatus('save failed'); });
+}
+
+// ===== events =====
+document.getElementById('saveBtn').addEventListener('click', doSave);
+document.getElementById('refreshBtn').addEventListener('click', function () { load(document.getElementById('datePick').value || null); });
+document.getElementById('datePick').addEventListener('change', function () { load(this.value); });
+
+load();
+</script>
+</body>
+</html>
