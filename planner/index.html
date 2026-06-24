@@ -216,9 +216,9 @@ function render() {
       var cu = b.customers[nm];
       html += '<span class="chip" style="background:' + cu.color + '">'
             + '<span class="nm">' + esc(cu.short) + '</span>'
-            + '<button class="stp" onclick="adj(\'' + rk.replace(/'/g, "\\'") + '\',' + jq(nm) + ',-1)">–</button>'
-            + '<span class="ct" id="ct_' + cid(rk, nm) + '">' + tileCount(rk, nm) + '</span>'
-            + '<button class="stp" onclick="adj(\'' + rk.replace(/'/g, "\\'") + '\',' + jq(nm) + ',1)">+</button>'
+            + '<button class="stp minus" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">–</button>'
+            + '<span class="ct">' + tileCount(rk, nm) + '</span>'
+            + '<button class="stp plus" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">+</button>'
             + '</span>';
     });
     html += '</div>';
@@ -245,8 +245,6 @@ function colHtml(rk, col) {
   return h;
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-function jq(s) { return JSON.stringify(String(s)); }      // quoted JS string literal for inline handlers
-function cid(rk, nm) { return (rk + '_' + nm).replace(/[^a-z0-9]/gi, '_'); }
 
 // ===== count editing =====
 function adj(rk, name, delta) {
@@ -386,6 +384,12 @@ function doSave() {
 document.getElementById('saveBtn').addEventListener('click', doSave);
 document.getElementById('refreshBtn').addEventListener('click', function () { load(document.getElementById('datePick').value || null); });
 document.getElementById('datePick').addEventListener('change', function () { load(this.value); });
+// delegated +/- count buttons (survives innerHTML re-renders since #root is not replaced)
+document.getElementById('root').addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.stp') : null;
+  if (!b) return;
+  adj(b.getAttribute('data-run'), b.getAttribute('data-nm'), b.classList.contains('plus') ? 1 : -1);
+});
 
 load();
 </script>
