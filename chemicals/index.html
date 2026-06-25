@@ -94,7 +94,12 @@
         <thead><tr><th>Chemical</th><th>Supplier</th><th class="num">Par</th><th>Tank</th><th class="num">Fill</th></tr></thead>
         <tbody id="cfgBody"></tbody>
       </table>
-      <div class="actions" style="margin-top:12px">
+
+      <h3 style="font-size:14px;margin:18px 0 6px">Supplier order emails</h3>
+      <p class="muted" style="margin:0 0 8px">Where each supplier's draft is addressed. Separate multiple addresses with commas.</p>
+      <div id="supBody"></div>
+
+      <div class="actions" style="margin-top:14px">
         <button class="btn" onclick="saveCfg()">Save settings</button>
         <span id="cfgStatus" class="muted"></span>
       </div>
@@ -141,14 +146,26 @@ function init(s){
     th.appendChild(lab);
   });
 
+  // Step 2 grouped by tank, in the configured tank order; anything with an
+  // unknown/blank tank falls to the end under "Other".
   var tb=document.getElementById('invBody'); tb.innerHTML='';
-  s.chemicals.forEach(function(c){
-    var last = (s.lastCounts && s.lastCounts[c.name]!==undefined) ? s.lastCounts[c.name] : '';
-    var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+esc(c.name)+'</td><td class="muted">'+esc(c.supplier)+'</td>'
-      +'<td class="num muted">'+(c.par||0)+'</td>'
-      +'<td class="num"><input type="number" min="0" step="1" data-name="'+esc(c.name)+'" value="'+esc(last)+'" placeholder="0"></td>';
-    tb.appendChild(tr);
+  var groupOrder = s.tanks.slice();
+  s.chemicals.forEach(function(c){ var t=c.tank||''; if(t && groupOrder.indexOf(t)<0) groupOrder.push(t); });
+  if(s.chemicals.some(function(c){return !c.tank;})) groupOrder.push('');
+  groupOrder.forEach(function(tk){
+    var rows = s.chemicals.filter(function(c){ return (c.tank||'')===tk; });
+    if(!rows.length) return;
+    var hr=document.createElement('tr');
+    hr.innerHTML='<td colspan="4" style="background:#f1f5f9;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#334155">'+esc(tk||'Other')+'</td>';
+    tb.appendChild(hr);
+    rows.forEach(function(c){
+      var last = (s.lastCounts && s.lastCounts[c.name]!==undefined) ? s.lastCounts[c.name] : '';
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(c.name)+'</td><td class="muted">'+esc(c.supplier)+'</td>'
+        +'<td class="num muted">'+(c.par||0)+'</td>'
+        +'<td class="num"><input type="number" min="0" step="1" data-name="'+esc(c.name)+'" value="'+esc(last)+'" placeholder="0"></td>';
+      tb.appendChild(tr);
+    });
   });
 
   var cb=document.getElementById('cfgBody'); cb.innerHTML='';
@@ -162,6 +179,18 @@ function init(s){
       +'<td><select data-i="'+i+'" data-f="tank"><option value=""'+(c.tank?'':' selected')+'>—</option>'+opts+'</select></td>'
       +'<td class="num"><input type="number" min="0" step="1" value="'+(c.fill||0)+'" data-i="'+i+'" data-f="fill"></td>';
     cb.appendChild(tr);
+  });
+
+  var sb=document.getElementById('supBody'); sb.innerHTML='';
+  Object.keys(s.suppliers).forEach(function(name){
+    var sup=s.suppliers[name]||{};
+    var div=document.createElement('div'); div.style.marginBottom='12px';
+    div.innerHTML='<div style="font-weight:600;margin-bottom:4px">'+esc(name)+'</div>'
+      +'<div class="muted" style="font-size:12px">To</div>'
+      +'<input type="text" data-sup="'+esc(name)+'" data-k="to" value="'+esc((sup.to||[]).join(", "))+'" style="width:100%;margin-bottom:6px">'
+      +'<div class="muted" style="font-size:12px">Cc</div>'
+      +'<input type="text" data-sup="'+esc(name)+'" data-k="cc" value="'+esc((sup.cc||[]).join(", "))+'" style="width:100%">';
+    sb.appendChild(div);
   });
 
   var bar=document.getElementById('reminderBar'); bar.style.display='block';
@@ -224,7 +253,14 @@ function makeDrafts(){
 }
 
 function saveCfg(){
-  var cfg={ tanks:STATE.tanks, suppliers:STATE.suppliers, chemicals:[] };
+  var suppliers={};
+  Object.keys(STATE.suppliers).forEach(function(n){ suppliers[n]={to:[],cc:[]}; });
+  document.querySelectorAll('#supBody [data-sup]').forEach(function(inp){
+    var n=inp.getAttribute('data-sup'), k=inp.getAttribute('data-k');
+    if(!suppliers[n]) suppliers[n]={to:[],cc:[]};
+    suppliers[n][k]=inp.value.split(',').map(function(x){return x.trim();}).filter(Boolean);
+  });
+  var cfg={ tanks:STATE.tanks, suppliers:suppliers, chemicals:[] };
   STATE.chemicals.forEach(function(c){ cfg.chemicals.push({name:c.name,supplier:c.supplier,par:c.par,tank:c.tank,fill:c.fill}); });
   document.querySelectorAll('#cfgBody [data-i]').forEach(function(inp){
     var i=+inp.getAttribute('data-i'), f=inp.getAttribute('data-f');
