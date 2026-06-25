@@ -46,6 +46,16 @@
     /* Receiving list is a table, not a form — give it the full landscape width */
     #page-log { max-width: 1100px; }
 
+    /* ---- TWO-COLUMN INTAKE (active once a customer is selected) ---- */
+    /* Before selection .split is plain block flow, so its children stack full-width. */
+    #page-intake.wide { max-width: 1040px; }
+    .split.two-col { display: flex; gap: 24px; align-items: flex-start; }
+    .split.two-col > .split-left,
+    .split.two-col > .split-right { flex: 1 1 0; min-width: 0; }
+    @media (max-width: 720px) {
+      .split.two-col { flex-direction: column; gap: 0; }
+    }
+
     /* ---- SECTION LABELS ---- */
     .section-label {
       font-size: 13px;
@@ -323,14 +333,15 @@
     }
     .add-input:focus { border-color: #3b82f6; }
     .add-btn {
-      padding: 14px 20px;
+      padding: 18px 38px;
       background: #3b82f6;
       color: #fff;
       border: none;
       border-radius: 10px;
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 22px;
+      font-weight: 700;
       cursor: pointer;
+      min-width: 104px;
     }
     .add-btn:active { background: #2563eb; }
 
@@ -685,7 +696,6 @@
 <!-- ========== INTAKE PAGE ========== -->
 <div class="page" id="page-intake">
 
-  <button class="snap-po-btn" id="snapPoBtn" onclick="triggerPoCamera()">📷 Snap PO Photo</button>
   <!-- Camera overlay (getUserMedia). Served top-level on GitHub Pages, not inside the Apps Script
        iframe, so the camera permission is granted here — unlike the old HtmlService page. -->
   <div class="cam-overlay" id="camOverlay">
@@ -725,59 +735,72 @@
     <button class="badge-clear" onclick="clearCustomer()" title="Change customer">✕</button>
   </div>
 
-  <div class="cust-notes" id="custNotes">
-    <div class="cust-notes-label">⚠ Notes &amp; Instructions</div>
-    <div class="cust-notes-body" id="custNotesBody"></div>
-  </div>
+  <!-- Two-column working area once a customer is picked: parts on the left,
+       photo / instructions / PO / comment / submit on the right. Stacks to a
+       single column before selection and on narrow screens. -->
+  <div class="split" id="intakeSplit">
 
-  <div id="openOrdersSection" style="display:none">
-    <div class="orders-header">
-      <div class="section-label">Open orders</div>
-      <button class="select-all-btn" id="selectAllBtn" onclick="selectAllOrders()">Select all</button>
-    </div>
-    <div id="openOrdersBtns"></div>
-  </div>
-
-  <div id="suggestionsSection" style="display:none">
-    <div class="section-label">Quick add</div>
-    <div class="chips-wrap" id="chips"></div>
-  </div>
-
-  <div id="itemsSection" style="display:none">
-    <div class="section-label">Items received</div>
-    <div id="itemList"></div>
-    <div class="add-wrap" id="addWrap">
-      <div class="add-row">
-        <input class="add-input" id="customItem" type="text"
-               placeholder="Other item…"
-               autocomplete="off" autocorrect="off" spellcheck="false"
-               oninput="onItemSearchInput(this.value)"
-               onfocus="onItemSearchInput(this.value)"
-               onkeydown="if(event.key==='Enter')addCustomItem()">
-        <button class="add-btn" onclick="addCustomItem()">Add</button>
+    <div class="split-left">
+      <div id="openOrdersSection" style="display:none">
+        <div class="orders-header">
+          <div class="section-label">Open orders</div>
+          <button class="select-all-btn" id="selectAllBtn" onclick="selectAllOrders()">Select all</button>
+        </div>
+        <div id="openOrdersBtns"></div>
       </div>
-      <div class="dropdown" id="itemDropdown"></div>
+
+      <div id="suggestionsSection" style="display:none">
+        <div class="section-label">Quick add</div>
+        <div class="chips-wrap" id="chips"></div>
+      </div>
+
+      <div id="itemsSection" style="display:none">
+        <div class="section-label">Items received</div>
+        <div id="itemList"></div>
+        <div class="add-wrap" id="addWrap">
+          <div class="add-row">
+            <input class="add-input" id="customItem" type="text"
+                   placeholder="Other item…"
+                   autocomplete="off" autocorrect="off" spellcheck="false"
+                   oninput="onItemSearchInput(this.value)"
+                   onfocus="onItemSearchInput(this.value)"
+                   onkeydown="if(event.key==='Enter')addCustomItem()">
+            <button class="add-btn" onclick="addCustomItem()">Add</button>
+          </div>
+          <div class="dropdown" id="itemDropdown"></div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div id="poSection" style="display:none">
-    <div class="section-label">PO / Reference number</div>
-    <div class="po-hint" id="poHint"></div>
-    <input class="po-input" id="poInput" type="text"
-           placeholder="Optional"
-           autocomplete="off" autocorrect="off">
-  </div>
+    <div class="split-right">
+      <button class="snap-po-btn" id="snapPoBtn" onclick="triggerPoCamera()">📷 Snap PO Photo</button>
 
-  <div id="notesSection" style="display:none">
-    <div class="section-label">Notes</div>
-    <textarea class="notes-input" id="notesInput" rows="2"
-              placeholder="Optional — damaged, short ship, new customer, etc."
-              autocomplete="off" autocorrect="off"></textarea>
-  </div>
+      <div class="cust-notes" id="custNotes">
+        <div class="cust-notes-label">⚠ Notes &amp; Instructions</div>
+        <div class="cust-notes-body" id="custNotesBody"></div>
+      </div>
 
-  <button class="submit-btn" id="submitBtn" onclick="onSubmit()" style="display:none">
-    Submit
-  </button>
+      <div id="poSection" style="display:none">
+        <div class="section-label">PO / Reference number</div>
+        <div class="po-hint" id="poHint"></div>
+        <input class="po-input" id="poInput" type="text"
+               placeholder="Optional"
+               autocomplete="off" autocorrect="off">
+      </div>
+
+      <div id="notesSection" style="display:none">
+        <div class="section-label">Notes</div>
+        <textarea class="notes-input" id="notesInput" rows="2"
+                  placeholder="Optional — damaged, short ship, new customer, etc."
+                  autocomplete="off" autocorrect="off"></textarea>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="onSubmit()" style="display:none">
+        Submit
+      </button>
+    </div>
+
+  </div>
 
 </div>
 
@@ -973,10 +996,12 @@ function onSearchFocus() {
 function selectCustomer(name) {
   selectedCust = allCustomers.find(function (c) { return c.name === name; }) || { name: name, aliases: [name], items: [], staffNote: '' };
 
-  // Hide search, show badge
+  // Hide search, show badge, switch the working area to two columns
   document.getElementById('quickSection').style.display = 'none';
   document.getElementById('searchWrap').style.display = 'none';
   document.getElementById('dropdown').classList.remove('open');
+  document.getElementById('intakeSplit').classList.add('two-col');
+  document.getElementById('page-intake').classList.add('wide');
   var badge = document.getElementById('customerBadge');
   badge.classList.add('show');
   document.getElementById('badgeName').textContent = name;
@@ -1054,6 +1079,8 @@ function clearCustomer() {
   openOrders = [];
   selectedOrderIdxs = [];
   document.getElementById('openOrdersSection').style.display = 'none';
+  document.getElementById('intakeSplit').classList.remove('two-col');
+  document.getElementById('page-intake').classList.remove('wide');
   document.getElementById('quickSection').style.display = 'block';
   document.getElementById('searchWrap').style.display = 'block';
   document.getElementById('customerInput').value = '';
