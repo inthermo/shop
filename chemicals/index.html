@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inthermo — Chemical Ordering</title>
+<style>
+  :root { --blue:#2563eb; --line:#e5e7eb; --ink:#111827; --muted:#6b7280; --bg:#f7f8fa; --green:#16a34a; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--ink); background:var(--bg); margin:0; padding:16px; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  label { font-size:14px; }
+  .tanks { display:flex; flex-wrap:wrap; gap:10px; }
+  .tank { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; padding:12px 16px; cursor:pointer; user-select:none; font-weight:600; }
+  .tank input { width:20px; height:20px; }
+  .tank.on { border-color:var(--blue); background:#eff6ff; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num { text-align:center; width:72px; }
+  input[type=number] { width:72px; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:16px; text-align:center; }
+  input[type=date],input[type=text],select { padding:8px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  .btn { background:var(--blue); color:#fff; border:0; border-radius:10px; padding:12px 18px; font-size:15px; font-weight:600; cursor:pointer; }
+  .btn.alt { background:#fff; color:var(--blue); border:1px solid var(--blue); }
+  .btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-block; background:#eef2ff; color:var(--blue); border-radius:999px; padding:2px 10px; font-size:12px; font-weight:600; }
+  .muted { color:var(--muted); font-size:13px; }
+  .ok { color:var(--green); font-weight:600; }
+  .err { color:#dc2626; font-weight:600; }
+  details { margin-bottom:16px; }
+  summary { cursor:pointer; font-weight:600; font-size:14px; padding:8px 0; }
+  .supblock { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .supblock h3 { margin:0 0 6px; font-size:15px; }
+  .ordline { font-size:15px; padding:2px 0; }
+  .cfgrow td { padding:4px; }
+  .cfgrow input,.cfgrow select { font-size:13px; }
+  a { color:var(--blue); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Chemical Ordering</h1>
+  <p class="sub">Count the drums → enter on-hand → pick the tanks you're changing → draft the Seacole &amp; Troy orders.</p>
+
+  <div id="reminderBar" class="card" style="display:none">
+    <div class="actions">
+      <div id="reminderText" class="muted"></div>
+      <span style="flex:1"></span>
+      <button id="reminderBtn" class="btn ghost" onclick="toggleReminder()"></button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Which tanks are you changing this cycle?</h2>
+    <div id="tanks" class="tanks"><span class="muted">Loading…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Current inventory (drums on hand)</h2>
+    <table>
+      <thead><tr><th>Chemical</th><th>Supplier</th><th class="num">Par</th><th class="num">On hand</th></tr></thead>
+      <tbody id="invBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>3. Need by</h2>
+    <div class="actions">
+      <input type="date" id="needBy">
+      <span class="muted">Used in the order subject line.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="actions">
+      <button class="btn alt" onclick="preview()">Preview order</button>
+      <button id="draftBtn" class="btn" onclick="makeDrafts()">Create email drafts</button>
+      <span id="status" class="muted"></span>
+    </div>
+    <div id="result" style="margin-top:14px"></div>
+  </div>
+
+  <details>
+    <summary>⚙️ Settings — pars, tank fills &amp; suppliers</summary>
+    <div class="card">
+      <p class="muted">Order per chemical = max(0, par − on hand) + (tank fill, when that tank is checked). Edit and Save; values seeded from your order history.</p>
+      <table>
+        <thead><tr><th>Chemical</th><th>Supplier</th><th class="num">Par</th><th>Tank</th><th class="num">Fill</th></tr></thead>
+        <tbody id="cfgBody"></tbody>
+      </table>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" onclick="saveCfg()">Save settings</button>
+        <span id="cfgStatus" class="muted"></span>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>🕑 Recent order cycles</summary>
+    <div class="card" id="histBody"><span class="muted">Loading…</span></div>
+  </details>
+</div>
+
+<script>
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzQruwzzt9pc8DaieZNj6vxtS974e4_cdwex2I-TQIWRHdg3fN3Kg-hxyGzN3Pn4Q-9/exec';
+var TOKEN = 'acd17f084882ea6134f9415cd5a4b96d';
+var STATE = null;
+
+function api(op, payload){
+  return fetch(BACKEND_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op:op, token:TOKEN, payload:payload||{} }),
+    redirect:'follow'
+  }).then(function(r){ return r.json(); })
+    .then(function(j){ if(j && j.ok===false && j.error) throw new Error(j.error); return j; });
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function setStatus(el, msg, cls){ var e=document.getElementById(el); e.textContent=msg; e.className=cls||'muted'; }
+
+window.onload = function(){
+  api('state').then(init).catch(function(e){ document.getElementById('tanks').innerHTML='<span class="err">Load error: '+esc(e.message)+'</span>'; });
+  api('history').then(renderHistory).catch(function(){});
+};
+
+function init(s){
+  STATE = s;
+  document.getElementById('needBy').value = s.needBy;
+
+  var th = document.getElementById('tanks'); th.innerHTML='';
+  s.tanks.forEach(function(t){
+    var lab=document.createElement('label'); lab.className='tank';
+    lab.innerHTML='<input type="checkbox" value="'+esc(t)+'" onchange="this.parentNode.classList.toggle(\'on\',this.checked)"> '+esc(t);
+    th.appendChild(lab);
+  });
+
+  var tb=document.getElementById('invBody'); tb.innerHTML='';
+  s.chemicals.forEach(function(c){
+    var last = (s.lastCounts && s.lastCounts[c.name]!==undefined) ? s.lastCounts[c.name] : '';
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+esc(c.name)+'</td><td class="muted">'+esc(c.supplier)+'</td>'
+      +'<td class="num muted">'+(c.par||0)+'</td>'
+      +'<td class="num"><input type="number" min="0" step="1" data-name="'+esc(c.name)+'" value="'+esc(last)+'" placeholder="0"></td>';
+    tb.appendChild(tr);
+  });
+
+  var cb=document.getElementById('cfgBody'); cb.innerHTML='';
+  s.chemicals.forEach(function(c,i){
+    var opts = s.tanks.map(function(t){ return '<option'+(c.tank===t?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
+    var supOpts = Object.keys(s.suppliers).map(function(sp){ return '<option'+(c.supplier===sp?' selected':'')+'>'+esc(sp)+'</option>'; }).join('');
+    var tr=document.createElement('tr'); tr.className='cfgrow';
+    tr.innerHTML='<td><input type="text" value="'+esc(c.name)+'" data-i="'+i+'" data-f="name" style="width:100%"></td>'
+      +'<td><select data-i="'+i+'" data-f="supplier">'+supOpts+'</select></td>'
+      +'<td class="num"><input type="number" min="0" step="1" value="'+(c.par||0)+'" data-i="'+i+'" data-f="par"></td>'
+      +'<td><select data-i="'+i+'" data-f="tank"><option value=""'+(c.tank?'':' selected')+'>—</option>'+opts+'</select></td>'
+      +'<td class="num"><input type="number" min="0" step="1" value="'+(c.fill||0)+'" data-i="'+i+'" data-f="fill"></td>';
+    cb.appendChild(tr);
+  });
+
+  var bar=document.getElementById('reminderBar'); bar.style.display='block';
+  document.getElementById('reminderText').textContent = s.reminderOn ? ('Reminder ON — next on '+(s.nextReminder||'?')) : 'Reminder is OFF';
+  document.getElementById('reminderBtn').textContent = s.reminderOn ? 'Turn off' : 'Turn on 5-week reminder';
+}
+
+function gatherForm(){
+  var counts={};
+  document.querySelectorAll('#invBody input[type=number]').forEach(function(inp){
+    counts[inp.getAttribute('data-name')] = inp.value;
+  });
+  var tanks=[];
+  document.querySelectorAll('#tanks input:checked').forEach(function(c){ tanks.push(c.value); });
+  return { counts:counts, tanks:tanks, needBy:document.getElementById('needBy').value };
+}
+
+function preview(){
+  setStatus('status','Calculating…');
+  api('compute', gatherForm()).then(function(r){ setStatus('status',''); renderResult(r, false); })
+    .catch(function(e){ setStatus('status',e.message,'err'); });
+}
+
+function renderResult(r, drafted){
+  var sup = r.bySupplier; var keys=Object.keys(sup);
+  var el=document.getElementById('result');
+  if(!keys.length){ el.innerHTML='<p class="muted">Nothing to order — everything is at/above par and no tank fills apply.</p>'; return; }
+  var html='';
+  keys.forEach(function(k){
+    html+='<div class="supblock"><h3>'+esc(k)+'</h3>';
+    sup[k].forEach(function(i){ html+='<div class="ordline"><b>'+i.qty+'</b>  '+esc(i.name)+'</div>'; });
+    html+='</div>';
+  });
+  if(!drafted) html+='<p class="muted">Looks right? Click <b>Create email drafts</b>.</p>';
+  el.innerHTML=html;
+}
+
+function makeDrafts(){
+  if(!confirm('Create Gmail drafts for the order(s)? They go to the Drafts folder — nothing is sent.')) return;
+  document.getElementById('draftBtn').disabled=true;
+  setStatus('status','Creating drafts…');
+  api('drafts', gatherForm()).then(function(r){
+    document.getElementById('draftBtn').disabled=false;
+    setStatus('status','Drafts created ✓','ok');
+    var html='<p class="ok">Created '+r.created.length+' draft(s) in Gmail.</p>';
+    r.created.forEach(function(c){
+      html+='<div class="supblock"><h3>'+esc(c.supplier)+' <span class="pill">draft</span></h3>'
+        +'<div class="muted">To: '+esc(c.to)+(c.cc?'<br>Cc: '+esc(c.cc):'')+'</div>'
+        +'<div class="muted" style="margin:4px 0"><b>'+esc(c.subject)+'</b></div>';
+      c.items.forEach(function(i){ html+='<div class="ordline"><b>'+i.qty+'</b>  '+esc(i.name)+'</div>'; });
+      html+='</div>';
+    });
+    html+='<p><a href="'+r.draftsUrl+'" target="_blank">Open Gmail Drafts to review &amp; send →</a></p>';
+    document.getElementById('result').innerHTML=html;
+    api('history').then(renderHistory).catch(function(){});
+  }).catch(function(e){
+    document.getElementById('draftBtn').disabled=false;
+    setStatus('status',e.message,'err');
+  });
+}
+
+function saveCfg(){
+  var cfg={ tanks:STATE.tanks, suppliers:STATE.suppliers, chemicals:[] };
+  STATE.chemicals.forEach(function(c){ cfg.chemicals.push({name:c.name,supplier:c.supplier,par:c.par,tank:c.tank,fill:c.fill}); });
+  document.querySelectorAll('#cfgBody [data-i]').forEach(function(inp){
+    var i=+inp.getAttribute('data-i'), f=inp.getAttribute('data-f');
+    cfg.chemicals[i][f] = (f==='par'||f==='fill') ? (+inp.value||0) : inp.value;
+  });
+  setStatus('cfgStatus','Saving…');
+  api('saveConfig', cfg).then(function(){
+    setStatus('cfgStatus','Saved ✓','ok');
+    api('state').then(init).catch(function(){});
+  }).catch(function(e){ setStatus('cfgStatus',e.message,'err'); });
+}
+
+function toggleReminder(){
+  var on = STATE.reminderOn;
+  document.getElementById('reminderBtn').disabled=true;
+  api(on ? 'turnOffReminder' : 'installReminder').then(function(){
+    api('state').then(init).catch(function(){});
+    document.getElementById('reminderBtn').disabled=false;
+  }).catch(function(e){
+    document.getElementById('reminderBtn').disabled=false;
+    document.getElementById('reminderText').textContent='Error: '+e.message;
+  });
+}
+
+function renderHistory(r){
+  var el=document.getElementById('histBody');
+  if(!r || !r.history || !r.history.length){ el.innerHTML='<span class="muted">No orders drafted yet.</span>'; return; }
+  var html='';
+  r.history.forEach(function(h){
+    var parts=Object.keys(h.orders||{}).map(function(s){
+      return s+': '+h.orders[s].map(function(i){return i.qty+'×'+i.name;}).join(', ');
+    });
+    html+='<div style="border-bottom:1px solid var(--line);padding:8px 0">'
+      +'<div class="muted">'+esc(h.when)+(h.tanks&&h.tanks.length?' · tanks: '+esc(h.tanks.join(', ')):'')+'</div>'
+      +parts.map(function(p){return '<div class="ordline">'+esc(p)+'</div>';}).join('')+'</div>';
+  });
+  el.innerHTML=html;
+}
+</script>
+</body>
+</html>
