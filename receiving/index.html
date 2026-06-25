@@ -307,10 +307,10 @@
     .remove-btn:active { color: #e63946; }
 
     /* ---- CUSTOM ITEM INPUT ---- */
+    .add-wrap { position: relative; margin-top: 4px; }
     .add-row {
       display: flex;
       gap: 8px;
-      margin-top: 4px;
     }
     .add-input {
       flex: 1;
@@ -746,12 +746,17 @@
   <div id="itemsSection" style="display:none">
     <div class="section-label">Items received</div>
     <div id="itemList"></div>
-    <div class="add-row">
-      <input class="add-input" id="customItem" type="text"
-             placeholder="Other item…"
-             autocomplete="off" autocorrect="off"
-             onkeydown="if(event.key==='Enter')addCustomItem()">
-      <button class="add-btn" onclick="addCustomItem()">Add</button>
+    <div class="add-wrap" id="addWrap">
+      <div class="add-row">
+        <input class="add-input" id="customItem" type="text"
+               placeholder="Other item…"
+               autocomplete="off" autocorrect="off" spellcheck="false"
+               oninput="onItemSearchInput(this.value)"
+               onfocus="onItemSearchInput(this.value)"
+               onkeydown="if(event.key==='Enter')addCustomItem()">
+        <button class="add-btn" onclick="addCustomItem()">Add</button>
+      </div>
+      <div class="dropdown" id="itemDropdown"></div>
     </div>
   </div>
 
@@ -894,10 +899,32 @@ function onRoutingLoaded(result) {
     return;
   }
   allCustomers = result.customers || [];
+  buildItemPool();
   var input = document.getElementById('customerInput');
   input.disabled = false;
   input.placeholder = 'Start typing customer name…';
   renderQuickGrid(false);
+}
+
+// Global pool of known part/item names for the "Other item…" typeahead.
+// Union of every customer's Receiving Items (Customer Routing col J), deduped
+// case-insensitively. The selected customer's own items + open-order part
+// numbers are folded in at filter time so they rank first.
+var GLOBAL_ITEMS = [];
+function buildItemPool() {
+  var seen = {}, pool = [];
+  allCustomers.forEach(function (c) {
+    (c.items || []).forEach(function (it) {
+      var nm = (it && it.name ? it.name : it);
+      if (!nm) return;
+      nm = String(nm).trim();
+      var k = nm.toLowerCase();
+      if (!nm || seen[k]) return;
+      seen[k] = true; pool.push(nm);
+    });
+  });
+  pool.sort(function (a, b) { return a.localeCompare(b); });
+  GLOBAL_ITEMS = pool;
 }
 
 function renderQuickGrid(loading) {
@@ -1068,6 +1095,10 @@ document.addEventListener('click', function (e) {
   if (wrap && !wrap.contains(e.target)) {
     document.getElementById('dropdown').classList.remove('open');
   }
+  var aw = document.getElementById('addWrap');
+  if (aw && !aw.contains(e.target)) {
+    document.getElementById('itemDropdown').classList.remove('open');
+  }
 });
 
 // =====================================================================
@@ -1088,7 +1119,48 @@ function addCustomItem() {
   if (row) { row.qty++; }
   else { itemRows.push({ name: name, qty: 1 }); }
   input.value = '';
+  document.getElementById('itemDropdown').classList.remove('open');
   renderItemList();
+}
+
+// Typeahead for the "Other item…" box. Ranks the selected customer's own
+// items + open-order part numbers first, then the global pool. Substring match.
+function itemSuggestions(q) {
+  q = q.toLowerCase().trim();
+  if (!q) return [];
+  var seen = {}, out = [];
+  function push(nm) {
+    if (!nm) return;
+    nm = String(nm).trim();
+    var k = nm.toLowerCase();
+    if (!nm || seen[k] || k.indexOf(q) === -1) return;
+    seen[k] = true; out.push(nm);
+  }
+  if (selectedCust) {
+    (selectedCust.items || []).forEach(function (it) { push(it && it.name ? it.name : it); });
+  }
+  openOrders.forEach(function (o) {
+    (o.items || []).forEach(function (it) { push(it.part_number); });
+  });
+  GLOBAL_ITEMS.forEach(push);
+  return out.slice(0, 10);
+}
+
+function onItemSearchInput(val) {
+  var dd = document.getElementById('itemDropdown');
+  var matches = itemSuggestions(val);
+  if (!matches.length) { dd.classList.remove('open'); return; }
+  dd.innerHTML = matches.map(function (nm) {
+    return '<div class="dropdown-item" onclick="pickItemSuggestion(' + JSON.stringify(nm).replace(/"/g, '&quot;') + ')">'
+      + esc(nm) + '</div>';
+  }).join('');
+  dd.classList.add('open');
+}
+
+function pickItemSuggestion(name) {
+  var input = document.getElementById('customItem');
+  input.value = name;
+  addCustomItem();
 }
 
 function changeQty(idx, delta) {
