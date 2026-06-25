@@ -829,6 +829,7 @@ var _TODAY      = '';
 var _ALL_ORDERS = {};
 var _TODAY_LOG  = null;
 var _PRELOAD    = null;
+var _PARTS      = {};   // { customerNameLower: [part name strings] } — per-customer item vocab
 
 // Top 20 customers by max single-item shipment frequency (from historical data).
 // short = button label; full = canonical name to match against allCustomers.
@@ -874,6 +875,7 @@ window.addEventListener('load', function () {
     _ALL_ORDERS = res.orders || {};
     _TODAY_LOG  = res.log || null;
     _PRELOAD    = res.routing || null;
+    _PARTS      = res.parts || {};
 
     var logDateEl = document.getElementById('logDate');
     logDateEl.value = _TODAY;
@@ -899,32 +901,10 @@ function onRoutingLoaded(result) {
     return;
   }
   allCustomers = result.customers || [];
-  buildItemPool();
   var input = document.getElementById('customerInput');
   input.disabled = false;
   input.placeholder = 'Start typing customer name…';
   renderQuickGrid(false);
-}
-
-// Global pool of known part/item names for the "Other item…" typeahead.
-// Union of every customer's Receiving Items (Customer Routing col J), deduped
-// case-insensitively. The selected customer's own items + open-order part
-// numbers are folded in at filter time so they rank first.
-var GLOBAL_ITEMS = [];
-function buildItemPool() {
-  var seen = {}, pool = [];
-  allCustomers.forEach(function (c) {
-    (c.items || []).forEach(function (it) {
-      var nm = (it && it.name ? it.name : it);
-      if (!nm) return;
-      nm = String(nm).trim();
-      var k = nm.toLowerCase();
-      if (!nm || seen[k]) return;
-      seen[k] = true; pool.push(nm);
-    });
-  });
-  pool.sort(function (a, b) { return a.localeCompare(b); });
-  GLOBAL_ITEMS = pool;
 }
 
 function renderQuickGrid(loading) {
@@ -1123,17 +1103,32 @@ function addCustomItem() {
   renderItemList();
 }
 
-// Typeahead for the "Other item…" box. Ranks the selected customer's own
-// items + open-order part numbers first, then the global pool. Substring match.
-function itemSuggestions(q) {
-  q = q.toLowerCase().trim();
-  if (!q) return [];
+// The selected customer's part vocabulary from the Steelhead Part Numbers export
+// (_PARTS, keyed by customer name). Falls back to a punctuation-insensitive match
+// so customer_master col B and the Steelhead name need not be byte-identical.
+function partsForSelected() {
+  if (!selectedCust) return [];
+  var direct = _PARTS[selectedCust.name.toLowerCase()];
+  if (direct) return direct;
+  var norm = function (s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); };
+  var targets = [selectedCust.name].concat(selectedCust.aliases || []).map(norm);
+  var keys = Object.keys(_PARTS);
+  for (var i = 0; i < keys.length; i++) {
+    if (targets.indexOf(norm(keys[i])) !== -1) return _PARTS[keys[i]];
+  }
+  return [];
+}
+
+// Pool for the "Other item…" typeahead — CUSTOMER-SPECIFIC only: the customer's
+// quick-add items (col J) + their open-order part numbers + their Steelhead part
+// vocabulary. No cross-customer suggestions.
+function customerPartPool() {
   var seen = {}, out = [];
   function push(nm) {
     if (!nm) return;
     nm = String(nm).trim();
     var k = nm.toLowerCase();
-    if (!nm || seen[k] || k.indexOf(q) === -1) return;
+    if (!nm || seen[k]) return;
     seen[k] = true; out.push(nm);
   }
   if (selectedCust) {
@@ -1142,8 +1137,16 @@ function itemSuggestions(q) {
   openOrders.forEach(function (o) {
     (o.items || []).forEach(function (it) { push(it.part_number); });
   });
-  GLOBAL_ITEMS.forEach(push);
-  return out.slice(0, 10);
+  partsForSelected().forEach(push);
+  return out;
+}
+
+// Empty query → browse the customer's parts (top 12); otherwise substring filter.
+function itemSuggestions(q) {
+  q = (q || '').toLowerCase().trim();
+  var pool = customerPartPool();
+  if (!q) return pool.slice(0, 12);
+  return pool.filter(function (nm) { return nm.toLowerCase().indexOf(q) !== -1; }).slice(0, 12);
 }
 
 function onItemSearchInput(val) {
