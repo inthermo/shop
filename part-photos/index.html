@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Part Photos</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: #f3f4f6; color: #111827;
+  }
+  header {
+    background: #111827; color: #fff; padding: 16px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 19px; margin: 0; font-weight: 600; }
+  .sub { font-size: 13px; color: #9ca3af; margin-top: 2px; }
+  .refresh {
+    background: #374151; color: #fff; border: none; border-radius: 8px;
+    padding: 10px 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .wrap { padding: 14px; max-width: 760px; margin: 0 auto; }
+  .row {
+    background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .cust { font-size: 13px; color: #6b7280; }
+  .row .item { font-size: 17px; font-weight: 600; margin-top: 1px; word-break: break-word; }
+  .row .seen { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+  .snap {
+    background: #dc2626; color: #fff; border: none; border-radius: 10px;
+    padding: 14px 16px; font-size: 16px; font-weight: 700; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .snap:active { background: #b91c1c; }
+  .empty { text-align: center; color: #6b7280; padding: 48px 16px; font-size: 16px; }
+  .empty .big { font-size: 40px; margin-bottom: 8px; }
+  .loading { text-align: center; color: #6b7280; padding: 40px; }
+
+  /* Camera overlay */
+  #cam {
+    position: fixed; inset: 0; background: #000; z-index: 50;
+    display: none; flex-direction: column;
+  }
+  #camVideo { flex: 1; width: 100%; object-fit: cover; background: #000; }
+  .cam-label {
+    color: #fff; text-align: center; padding: 12px; font-size: 16px;
+    background: rgba(0,0,0,.55); position: absolute; top: 0; left: 0; right: 0;
+  }
+  .cam-bar { display: flex; gap: 12px; padding: 16px; background: #000; }
+  .cam-bar button { flex: 1; border: none; border-radius: 10px; padding: 18px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  .cam-cancel { background: #374151; color: #fff; }
+  .cam-shoot { background: #fff; color: #111; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: #111827; color: #fff; padding: 13px 20px; border-radius: 24px;
+    font-size: 15px; font-weight: 600; opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 60; max-width: 90%; text-align: center;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>📷 Part Photos</h1>
+    <div class="sub" id="sub">Loading…</div>
+  </div>
+  <button class="refresh" onclick="load()">↻</button>
+</header>
+
+<div class="wrap" id="list"><div class="loading">Loading the photo queue…</div></div>
+
+<!-- Camera overlay -->
+<div id="cam">
+  <div class="cam-label" id="camLabel"></div>
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="cam-bar">
+    <button class="cam-cancel" onclick="closeCam()">Cancel</button>
+    <button class="cam-shoot" id="shootBtn" onclick="shoot()">Capture</button>
+  </div>
+</div>
+
+<!-- Fallback native picker for browsers without getUserMedia -->
+<input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" onchange="onFilePicked(this)">
+
+<div id="toast"></div>
+
+<script>
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec';
+
+function call(op, payload) {
+  return fetch(BACKEND_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op: op, payload: payload || {} }),
+    redirect: 'follow'
+  }).then(function (r) { return r.json(); });
+}
+
+var queue       = [];     // [{customer, item, count, firstSeen}]
+var active      = null;   // the queue entry currently being photographed
+var _camStream  = null;
+var toastTimer  = null;
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+
+function showToast(msg, ms) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove('show'); }, ms || 2800);
+}
+
+function load() {
+  document.getElementById('sub').textContent = 'Loading…';
+  call('getPhotoQueue', {})
+    .then(function (res) {
+      if (!res || !res.ok) { render([]); document.getElementById('sub').textContent = 'Error loading'; return; }
+      queue = res.rows || [];
+      render(queue);
+    })
+    .catch(function () { render([]); document.getElementById('sub').textContent = 'Network error'; });
+}
+
+function render(rows) {
+  var sub = document.getElementById('sub');
+  var list = document.getElementById('list');
+  sub.textContent = rows.length ? (rows.length + ' part' + (rows.length === 1 ? '' : 's') + ' need a photo') : 'All caught up';
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty"><div class="big">✅</div>No parts waiting for a photo.<br>New parts show up here as they\'re received.</div>';
+    return;
+  }
+  list.innerHTML = rows.map(function (r, i) {
+    var seen = r.count > 1 ? ('received ' + r.count + '×') : ('first seen ' + esc(r.firstSeen || ''));
+    return '<div class="row">'
+      +   '<div class="meta">'
+      +     '<div class="cust">' + esc(r.customer) + '</div>'
+      +     '<div class="item">' + esc(r.item) + '</div>'
+      +     '<div class="seen">' + seen + '</div>'
+      +   '</div>'
+      +   '<button class="snap" onclick="startCapture(' + i + ')">📷 Photo</button>'
+      + '</div>';
+  }).join('');
+}
+
+function startCapture(i) {
+  active = queue[i];
+  if (!active) return;
+  document.getElementById('camLabel').textContent = active.customer + ' — ' + active.item;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // No live camera (older browser) — use the native picker, which still hints the rear camera.
+    document.getElementById('fileInput').click();
+    return;
+  }
+  document.getElementById('cam').style.display = 'flex';
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function (stream) {
+      _camStream = stream;
+      document.getElementById('camVideo').srcObject = stream;
+    })
+    .catch(function () {
+      closeCam();
+      document.getElementById('fileInput').click(); // permission denied / no cam → native picker
+    });
+}
+
+function closeCam() {
+  document.getElementById('cam').style.display = 'none';
+  if (_camStream) { _camStream.getTracks().forEach(function (t) { t.stop(); }); _camStream = null; }
+  document.getElementById('camVideo').srcObject = null;
+}
+
+function shoot() {
+  var vid = document.getElementById('camVideo');
+  if (!vid.videoWidth) return;
+  var MAX = 1800;
+  var w = vid.videoWidth, h = vid.videoHeight;
+  var canvas = document.createElement('canvas');
+  if (Math.max(w, h) > MAX) {
+    var scale = MAX / Math.max(w, h);
+    canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+  } else { canvas.width = w; canvas.height = h; }
+  canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+  closeCam();
+  upload(canvas.toDataURL('image/jpeg', 0.88));
+}
+
+// Native picker path — read, downscale, upload.
+function onFilePicked(input) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !active) return;
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    var img = new Image();
+    img.onload = function () {
+      var MAX = 1800;
+      var w = img.width, h = img.height;
+      var canvas = document.createElement('canvas');
+      if (Math.max(w, h) > MAX) {
+        var scale = MAX / Math.max(w, h);
+        canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+      } else { canvas.width = w; canvas.height = h; }
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      upload(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function upload(dataUrl) {
+  if (!active) return;
+  var item = active;
+  var base64 = dataUrl.split(',')[1];
+  showToast('Saving photo…', 6000);
+  call('savePartPhoto', { customer: item.customer, item: item.item, imageBase64: base64, mimeType: 'image/jpeg' })
+    .then(function (res) {
+      if (res && res.ok) {
+        showToast('✓ Saved: ' + item.item);
+        queue = queue.filter(function (q) { return !(q.customer === item.customer && q.item === item.item); });
+        render(queue);
+      } else {
+        showToast('Error: ' + (res && res.error || 'save failed'), 5000);
+      }
+      active = null;
+    })
+    .catch(function (e) { showToast('Error: ' + e.message, 5000); active = null; });
+}
+
+load();
+</script>
+</body>
+</html>

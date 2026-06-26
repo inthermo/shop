@@ -1400,7 +1400,8 @@ function onSubmit() {
   var btn  = document.getElementById('submitBtn');
   btn.disabled = true;
   btn.textContent = 'Submitting…';
-  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note })
+  var itemNames = activeRows.map(function (r) { return r.name; });
+  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames })
     .then(function (result) {
       btn.disabled = false; btn.textContent = 'Submit';
       if (result && result.ok) {
@@ -1455,8 +1456,15 @@ function submitMultipleOrders() {
       })
       .filter(Boolean);
     var desc = lines.length ? lines.join(', ') : 'Received';
+    // Queue the actual received part names (not the "qty× " description) for photos.
+    var itemNames = (o.items || [])
+      .map(function (it) {
+        var row = itemRows.find(function (r) { return r.name === it.part_number; });
+        return (row && row.qty > 0) ? it.part_number : null;
+      })
+      .filter(Boolean);
     btn.textContent = 'Submitting ' + (idx + 1) + ' of ' + total + '…';
-    call('submitReceiving', { date: date, customer: selectedCust.name, description: desc, poNum: o.po_number, note: note })
+    call('submitReceiving', { date: date, customer: selectedCust.name, description: desc, poNum: o.po_number, note: note, items: itemNames })
       .then(function (result) {
         if (result && result.ok) { done++; } else { errors++; }
         submitNext(idx + 1);
