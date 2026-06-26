@@ -455,10 +455,14 @@
     }
     .log-table tbody tr:last-child td { border-bottom: none; }
     .log-table tr.done td { opacity: 0.6; }
-    .log-col-customer { font-weight: 700; color: #1a1a2e; width: 22%; }
+    .log-col-date { color: #6b7280; width: 12%; white-space: nowrap; font-weight: 600; }
+    .log-col-customer { font-weight: 700; color: #1a1a2e; width: 20%; }
     .log-col-po { color: #6b7280; width: 14%; white-space: nowrap; }
     .log-col-items { color: #374151; }
     .log-done { color: #22c55e; font-weight: 700; }
+    .log-table tr.day-start td { border-top: 2px solid #e5e7eb; }
+    @keyframes logFlash { 0% { background: #fde68a; } 100% { background: transparent; } }
+    .log-table tr.log-flash td { animation: logFlash 1.6s ease-out; }
     .log-empty {
       text-align: center;
       padding: 48px 16px;
@@ -467,12 +471,17 @@
     }
     .log-toolbar {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 12px;
       align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #f0f2f5;
+      padding: 8px 0;
     }
     .log-date {
-      flex: 1;
       padding: 12px 14px;
       font-size: 17px;
       border: 2px solid #d1d5db;
@@ -482,6 +491,27 @@
       outline: none;
     }
     .log-date:focus { border-color: #3b82f6; }
+    .log-filter {
+      flex: 1;
+      min-width: 130px;
+      padding: 12px 14px;
+      font-size: 16px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #1a1a2e;
+      outline: none;
+    }
+    .log-filter:focus { border-color: #3b82f6; }
+    .log-filter-sel {
+      padding: 12px 10px;
+      font-size: 16px;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #1a1a2e;
+      outline: none;
+    }
     .log-refresh {
       padding: 12px 16px;
       background: #fff;
@@ -806,7 +836,13 @@
 <!-- ========== LOG PAGE ========== -->
 <div class="page active" id="page-log">
   <div class="log-toolbar">
-    <input type="date" id="logDate" class="log-date" onchange="loadLog()">
+    <input type="date" id="logDate" class="log-date" onchange="jumpToLogDate()" title="Jump to date">
+    <input type="text" id="logFilterCust" class="log-filter" placeholder="Filter customer…" oninput="applyLogFilter()">
+    <select id="logFilterStatus" class="log-filter-sel" onchange="applyLogFilter()">
+      <option value="all">All</option>
+      <option value="pending">Pending</option>
+      <option value="done">Done ✓</option>
+    </select>
     <button class="log-refresh" onclick="loadLog()" title="Refresh">↻</button>
   </div>
   <div id="logContent" class="loading-msg">Loading…</div>
@@ -1435,45 +1471,94 @@ function submitMultipleOrders() {
 // LOG
 // =====================================================================
 function loadLog() {
-  var date = document.getElementById('logDate').value;
   document.getElementById('logContent').innerHTML = '<div class="loading-msg">Loading…</div>';
-  call('getTodayReceiving', { date: date })
+  call('getReceivingRange', { days: 30 })
     .then(renderLog)
     .catch(function (e) {
       document.getElementById('logContent').innerHTML = '<div class="loading-msg">Error: ' + esc(e.message) + '</div>';
     });
 }
 
+// Render the full date range as one continuous table (newest day first) with a
+// Date column. The first row of each day gets id="logd-<date>" + a divider so
+// the date picker can scroll straight to it. Filters are applied after render.
 function renderLog(result) {
   var entries = (result && result.entries) || [];
   if (!entries.length) {
-    document.getElementById('logContent').innerHTML = '<div class="log-empty">Nothing received on this date.</div>';
+    document.getElementById('logContent').innerHTML = '<div class="log-empty">Nothing received in the last 30 days.</div>';
     return;
   }
-  // Newest first
-  var reversed = entries.slice().reverse();
-  var selVal = document.getElementById('logDate').value;
-  var parts = selVal ? selVal.split('-') : null;
-  var d = parts ? new Date(+parts[0], +parts[1] - 1, +parts[2]) : new Date();
-  var dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  var lastDate = null;
+  var rowsHtml = entries.map(function (e) {
+    var firstOfDay = e.date !== lastDate;
+    lastDate = e.date;
+    var po = e.poNum ? esc(e.poNum) : '<span style="color:#d1d5db">—</span>';
+    if (e.done) po += ' <span class="log-done">✓</span>';
+    return '<tr class="log-row ' + (e.done ? 'done ' : '') + (firstOfDay ? 'day-start' : '') + '"'
+      + (firstOfDay ? ' id="logd-' + esc(e.date) + '"' : '')
+      + ' data-date="' + esc(e.date) + '"'
+      + ' data-cust="' + esc(String(e.customer).toLowerCase()) + '"'
+      + ' data-done="' + (e.done ? '1' : '0') + '">'
+      + '<td class="log-col-date">' + esc(fmtShortDate(e.date)) + '</td>'
+      + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
+      + '<td class="log-col-po">' + po + '</td>'
+      + '<td class="log-col-items">' + esc(e.description) + '</td>'
+      + '</tr>';
+  }).join('');
   document.getElementById('logContent').innerHTML =
-    '<div class="log-date-header">' + esc(dateStr) + '</div>'
-    + '<div class="log-table-wrap"><table class="log-table">'
+    '<div class="log-table-wrap"><table class="log-table">'
     + '<thead><tr>'
+    + '<th class="log-col-date">Date</th>'
     + '<th class="log-col-customer">Customer</th>'
     + '<th class="log-col-po">PO</th>'
     + '<th class="log-col-items">Items</th>'
-    + '</tr></thead><tbody>'
-    + reversed.map(function (e) {
-      var po = e.poNum ? esc(e.poNum) : '<span style="color:#d1d5db">—</span>';
-      if (e.done) po += ' <span class="log-done">✓</span>';
-      return '<tr class="' + (e.done ? 'done' : '') + '">'
-        + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
-        + '<td class="log-col-po">' + po + '</td>'
-        + '<td class="log-col-items">' + esc(e.description) + '</td>'
-        + '</tr>';
-    }).join('')
-    + '</tbody></table></div>';
+    + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+    + '<div id="logNoMatch" class="log-empty" style="display:none">No entries match the filter.</div>';
+  applyLogFilter();
+}
+
+// Convert 'yyyy-MM-dd' → 'Thu 6/25'.
+function fmtShortDate(ymd) {
+  var p = String(ymd).split('-');
+  if (p.length !== 3) return ymd;
+  var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+}
+
+// Show/hide rows by the customer text filter + status select (no refetch).
+function applyLogFilter() {
+  var custEl = document.getElementById('logFilterCust');
+  var statEl = document.getElementById('logFilterStatus');
+  var cust   = custEl ? custEl.value.trim().toLowerCase() : '';
+  var status = statEl ? statEl.value : 'all';
+  var rows   = document.querySelectorAll('#logContent tr.log-row');
+  var shown  = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var r    = rows[i];
+    var done = r.getAttribute('data-done') === '1';
+    var okC  = !cust || r.getAttribute('data-cust').indexOf(cust) !== -1;
+    var okS  = status === 'all' || (status === 'pending' && !done) || (status === 'done' && done);
+    var show = okC && okS;
+    r.style.display = show ? '' : 'none';
+    if (show) shown++;
+  }
+  var nm = document.getElementById('logNoMatch');
+  if (nm) nm.style.display = (rows.length && !shown) ? '' : 'none';
+}
+
+// Date picker: scroll to that day's first row instead of reloading the view.
+function jumpToLogDate() {
+  var v = document.getElementById('logDate').value;
+  if (!v) return;
+  var el = document.getElementById('logd-' + v);
+  if (el && el.style.display !== 'none') {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.remove('log-flash');
+    void el.offsetWidth; // restart the flash animation
+    el.classList.add('log-flash');
+  } else {
+    showToast('Nothing received on ' + fmtShortDate(v));
+  }
 }
 
 // =====================================================================
