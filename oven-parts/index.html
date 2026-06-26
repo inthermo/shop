@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Oven Part Order Tool</title>
+<style>
+  :root{ --b:#1565c0; --bg:#f4f6f8; --line:#d8dee4; --ok:#1b8a3a; --err:#c62828; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:#1a1a1a; }
+  header{ background:var(--b); color:#fff; padding:16px 18px; font-size:20px; font-weight:600; }
+  .wrap{ max-width:760px; margin:0 auto; padding:16px; }
+  h2{ font-size:16px; margin:22px 4px 10px; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  label.oven{ display:flex; align-items:center; gap:12px; padding:14px; border:1px solid var(--line); border-radius:10px; margin-bottom:10px; font-size:17px; }
+  label.oven.on{ border-color:var(--b); background:#e9f1fb; }
+  label.oven input{ width:24px; height:24px; }
+  .oven .serial{ color:#667; font-size:14px; margin-left:auto; }
+  .ovenblock h3{ margin:0 0 4px; font-size:16px; }
+  .ovenblock .sub{ color:#667; font-size:13px; margin-bottom:10px; }
+  .part{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #eef1f4; }
+  .part:first-of-type{ border-top:0; }
+  .part .info{ flex:1; }
+  .part .code{ font-weight:600; }
+  .part .desc{ color:#667; font-size:13px; }
+  .part input{ width:62px; height:42px; font-size:18px; text-align:center; border:1px solid var(--line); border-radius:8px; }
+  .btnrow{ display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 24px; }
+  button{ flex:1; min-width:160px; font-size:17px; font-weight:600; padding:14px; border:0; border-radius:10px; cursor:pointer; }
+  .primary{ background:var(--b); color:#fff; }
+  .ghost{ background:#fff; color:var(--b); border:1px solid var(--b); }
+  button:disabled{ opacity:.5; }
+  pre{ white-space:pre-wrap; background:#fbfcfd; border:1px solid var(--line); border-radius:10px; padding:12px; font-size:14px; }
+  .muted{ color:#667; } .ok{ color:var(--ok); font-weight:600; } .err{ color:var(--err); font-weight:600; }
+</style>
+</head>
+<body>
+<header>🔥 Oven Part Order Tool</header>
+<div class="wrap">
+
+  <h2>1. Which ovens are you ordering for?</h2>
+  <div class="card" id="ovens"><span class="muted">Loading…</span></div>
+
+  <h2>2. What parts?</h2>
+  <div id="parts"><div class="card muted">Pick one or more ovens above.</div></div>
+
+  <div class="btnrow">
+    <button class="ghost" id="previewBtn" onclick="doPreview()" disabled>Preview email</button>
+    <button class="primary" id="dropBtn" onclick="doDrop()" disabled>Drop the email ✉️</button>
+  </div>
+
+  <div id="status" class="muted"></div>
+  <div class="card" id="out" style="display:none"><pre id="outpre"></pre></div>
+
+</div>
+
+<script>
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzx6mCRilUAMbDuRKMfFI67E4GIDAOwubB9mUxzEAs/exec';
+var TOKEN = '70809676cb98d2bf8445e1284fe36f2a';
+var CAT = null;
+
+function api(op, payload){
+  return fetch(BACKEND_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op:op, token:TOKEN, payload:payload||{} }),
+    redirect:'follow'
+  }).then(function(r){ return r.json(); })
+    .then(function(j){ if(j && j.ok===false && j.error) throw new Error(j.error); return j; });
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function setStatus(m,cls){ var e=document.getElementById('status'); e.textContent=m||''; e.className=cls||'muted'; }
+
+window.onload = function(){
+  api('catalog').then(function(c){
+    CAT = c;
+    var h=document.getElementById('ovens'); h.innerHTML='';
+    c.ovens.forEach(function(o){
+      var lab=document.createElement('label'); lab.className='oven';
+      lab.innerHTML='<input type="checkbox" data-id="'+o.id+'" onchange="toggleOven(this)"> '+
+        '<span>'+esc(o.label)+'</span><span class="serial">'+esc(o.serial)+' · '+o.burner+'</span>';
+      h.appendChild(lab);
+    });
+  }).catch(function(e){ document.getElementById('ovens').innerHTML='<span class="err">Load error: '+esc(e.message)+'</span>'; });
+};
+
+function toggleOven(cb){
+  cb.closest('.oven').classList.toggle('on', cb.checked);
+  renderParts();
+}
+function selectedOvenIds(){
+  return [].slice.call(document.querySelectorAll('#ovens input:checked')).map(function(cb){ return Number(cb.getAttribute('data-id')); });
+}
+
+function renderParts(){
+  var ids = selectedOvenIds();
+  var host = document.getElementById('parts');
+  var enable = ids.length>0;
+  document.getElementById('previewBtn').disabled = !enable;
+  document.getElementById('dropBtn').disabled = !enable;
+  if(!enable){ host.innerHTML='<div class="card muted">Pick one or more ovens above.</div>'; return; }
+
+  host.innerHTML='';
+  ids.forEach(function(id){
+    var o = CAT.ovens.filter(function(x){return x.id===id;})[0];
+    var fr = CAT.flameRod[o.burner];
+    var card=document.createElement('div'); card.className='card ovenblock'; card.setAttribute('data-oid',id);
+    var rows = '<h3>'+esc(o.label)+' <span class="muted">('+esc(o.serial)+')</span></h3>'+
+               '<div class="sub">'+(o.burner==='FABER'?'Faber SF8 burner':'PBG II burner')+'</div>';
+    rows += partRow('flameRod', fr.code, fr.desc + (fr.note?' — '+fr.note:''));
+    CAT.thermocouples.forEach(function(tc){ rows += partRow(tc.key, tc.code, tc.desc); });
+    card.innerHTML = rows;
+    host.appendChild(card);
+  });
+}
+function partRow(key, code, desc){
+  return '<div class="part">'+
+    '<div class="info"><div class="code">'+esc(code)+'</div><div class="desc">'+esc(desc)+'</div></div>'+
+    '<input type="number" min="0" step="1" value="0" inputmode="numeric" data-key="'+key+'">'+
+  '</div>';
+}
+
+function collect(){
+  var ovens=[];
+  [].slice.call(document.querySelectorAll('#parts .ovenblock')).forEach(function(card){
+    var row={ id:Number(card.getAttribute('data-oid')) };
+    var any=false;
+    [].slice.call(card.querySelectorAll('input[data-key]')).forEach(function(inp){
+      var v=Number(inp.value||0); row[inp.getAttribute('data-key')]=v; if(v>0) any=true;
+    });
+    if(any) ovens.push(row);
+  });
+  return { ovens:ovens };
+}
+
+function doPreview(){
+  var p=collect();
+  if(!p.ovens.length){ setStatus('Enter a quantity on at least one part.','err'); return; }
+  setStatus('Building preview…');
+  api('preview', p).then(function(r){
+    document.getElementById('out').style.display='';
+    document.getElementById('outpre').textContent = 'To: '+r.to+'\nSubject: '+r.subject+'\n\n'+r.body;
+    setStatus('Preview ready — review, then Drop the email.','ok');
+  }).catch(function(e){ setStatus(e.message,'err'); });
+}
+
+function doDrop(){
+  var p=collect();
+  if(!p.ovens.length){ setStatus('Enter a quantity on at least one part.','err'); return; }
+  document.getElementById('dropBtn').disabled=true;
+  setStatus('Creating draft in your Gmail…');
+  api('draft', p).then(function(r){
+    document.getElementById('out').style.display='';
+    document.getElementById('outpre').textContent = 'DRAFT CREATED in Gmail (to '+r.to+')\n\nSubject: '+r.subject+'\n\n'+r.body;
+    setStatus('✅ Draft created — open Gmail drafts to review and send.','ok');
+  }).catch(function(e){ setStatus('Error: '+e.message,'err'); document.getElementById('dropBtn').disabled=false; });
+}
+</script>
+</body>
+</html>
