@@ -17,8 +17,11 @@ here (top-level HTTPS origin) removes that ceiling. See the Receiving Intake mem
 ## Layout
 
 ```
-receiving/        Receiving Intake — touchscreen receiving entry + PO photo capture
-                  Backend: "Receiving Intake" Apps Script project (doPost JSON API).
+index.html        Landing page (tools.myinthermo.com) — links to every tool below.
+oven-parts/       Oven Part Order Tool — order flame rods + thermocouples from Steelman.
+chemicals/        Chemical Ordering — 5-week chemical re-order; drafts Seacole/Troy.
+planner/          Truck Planner — drag-and-drop next-day truck loading.
+receiving/        Receiving Intake — touchscreen receiving entry + PO photo capture.
 ```
 
 ## Backend contract
