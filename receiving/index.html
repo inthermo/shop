@@ -944,8 +944,9 @@ window.addEventListener('load', function () {
     logDateEl.min = minD.getFullYear() + '-' + pad2(minD.getMonth() + 1) + '-' + pad2(minD.getDate());
 
     onRoutingLoaded(_PRELOAD);
+    // The Log is no longer fetched at boot (it's the heaviest payload and the
+    // Intake tab is the default). It lazy-loads the first time the Log tab opens.
     if (_TODAY_LOG && _TODAY_LOG.entries) { renderLog(_TODAY_LOG); }
-    else { loadLog(); }
   }).catch(function (err) {
     showToast('Load failed (network/CORS): ' + err.message, 8000);
     document.getElementById('logContent').innerHTML =
