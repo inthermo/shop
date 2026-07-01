@@ -998,7 +998,12 @@ function switchTab(tab) {
     document.getElementById('page-' + id).classList.toggle('active', id === tab);
   });
   document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
-  if (tab === 'log') loadLog();
+  if (tab === 'log') {
+    // The log was baked into bootstrap and already rendered, so opening the tab is
+    // instant. Kick a silent background refresh (no "Loading…" wipe) so it stays current.
+    if (_TODAY_LOG && _TODAY_LOG.entries) loadLog(true);
+    else loadLog();
+  }
 }
 
 // =====================================================================
@@ -1481,12 +1486,17 @@ function submitMultipleOrders() {
 // =====================================================================
 // LOG
 // =====================================================================
-function loadLog() {
-  document.getElementById('logContent').innerHTML = '<div class="loading-msg">Loading…</div>';
+// silent=true refreshes in place without wiping the already-rendered (baked) log —
+// used when the Log tab opens with data already on screen, so there's no flicker.
+function loadLog(silent) {
+  if (!silent) document.getElementById('logContent').innerHTML = '<div class="loading-msg">Loading…</div>';
   call('getReceivingRange', { days: 30 })
-    .then(renderLog)
+    .then(function (result) {
+      _TODAY_LOG = result;           // keep the baked copy fresh for the next tab open
+      renderLog(result);
+    })
     .catch(function (e) {
-      document.getElementById('logContent').innerHTML = '<div class="loading-msg">Error: ' + esc(e.message) + '</div>';
+      if (!silent) document.getElementById('logContent').innerHTML = '<div class="loading-msg">Error: ' + esc(e.message) + '</div>';
     });
 }
 
