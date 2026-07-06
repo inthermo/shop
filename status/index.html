@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Status · Inthermo</title>
+<style>
+  :root{ --b:#1565c0; --bg:#f4f6f8; --line:#d8dee4; --ok:#2e7d32; --warn:#ef6c00; --err:#c62828; --stale:#8e24aa; --unk:#90a4ae; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:#1a1a1a; }
+  header{ background:var(--b); color:#fff; padding:16px 18px; position:sticky; top:0; z-index:5; }
+  header h1{ margin:0; font-size:20px; } header .sub{ margin:4px 0 0; opacity:.9; font-size:13px; }
+  .wrap{ max-width:820px; margin:0 auto; padding:14px; }
+  .grp{ margin:18px 0 6px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#67727e; }
+  .agent{ background:#fff; border:1px solid var(--line); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  .row{ display:flex; align-items:center; gap:12px; padding:13px 14px; cursor:pointer; }
+  .dot{ width:11px; height:11px; border-radius:50%; flex:none; }
+  .dot.ok{ background:var(--ok); } .dot.warn{ background:var(--warn); } .dot.error{ background:var(--err); }
+  .dot.stale{ background:var(--stale); } .dot.unknown{ background:var(--unk); }
+  .nm{ flex:1; min-width:0; }
+  .nm .t{ font-size:16px; font-weight:600; }
+  .nm .s{ font-size:12.5px; color:#6b7681; margin-top:2px; }
+  .rt{ text-align:right; flex:none; }
+  .rt .next{ font-size:15px; font-weight:600; color:var(--b); }
+  .rt .nextlbl{ font-size:11px; color:#8894a0; }
+  .caret{ color:#b3bcc6; font-size:18px; flex:none; transition:transform .15s; }
+  .agent.open .caret{ transform:rotate(90deg); }
+  .body{ display:none; border-top:1px solid var(--line); padding:12px 14px; background:#fafbfc; }
+  .agent.open .body{ display:block; }
+  .kv{ font-size:13px; color:#48525c; margin:3px 0; }
+  .kv b{ color:#1a1a1a; font-weight:600; }
+  .ev{ font-size:13px; padding:6px 0; border-top:1px dashed #e2e7ec; }
+  .ev:first-child{ border-top:none; }
+  .ev .et{ color:#8894a0; font-variant-numeric:tabular-nums; }
+  .ev .estatus{ font-weight:600; }
+  pre.det{ margin:5px 0 0; font-size:12px; background:#eef2f6; border-radius:6px; padding:7px 9px; overflow:auto; white-space:pre-wrap; }
+  .timeline{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:6px 14px; }
+  .tl{ display:flex; gap:10px; padding:9px 0; border-top:1px solid #eef1f4; font-size:13.5px; }
+  .tl:first-child{ border-top:none; }
+  .tl .tlt{ color:#8894a0; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .tl .tln{ font-weight:600; white-space:nowrap; }
+  .tl .tls{ color:#3a444e; }
+  .muted{ color:#8894a0; font-size:13px; padding:10px 2px; }
+  footer{ text-align:center; color:#8893a0; font-size:12px; padding:16px 0 30px; }
+  .upd{ font-size:12px; color:#fff; opacity:.85; }
+  .refresh{ background:rgba(255,255,255,.18); border:none; color:#fff; border-radius:8px; padding:5px 11px; font-size:13px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding:0; display:flex; align-items:center; gap:12px;">
+    <div style="flex:1">
+      <h1>📟 Agent Status</h1>
+      <div class="sub" id="sub">loading…</div>
+    </div>
+    <button class="refresh" id="refreshBtn">↻ Refresh</button>
+  </div>
+</header>
+<div class="wrap">
+  <div id="agents"></div>
+  <div class="grp">Today's activity</div>
+  <div class="timeline" id="timeline"><div class="muted">loading…</div></div>
+</div>
+<footer>Inthermo LLC · automation status board · auto-refreshes every 30s</footer>
+
+<script>
+var BACKEND = 'https://script.google.com/macros/s/AKfycbz2a5RrKppPbO_axavcyqCOLI6LKrrzRLpd2qVkxzSchAflV9CHwGVIOuLamh5YC8VP/exec';
+var TZ = 'America/Chicago';
+var openIds = {};
+
+function clock(ms){
+  if(ms==null) return '—';
+  return new Date(ms).toLocaleTimeString('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit'});
+}
+function dayLabel(ms){
+  if(ms==null) return '';
+  var d = new Date(ms).toLocaleDateString('en-US',{timeZone:TZ,weekday:'short'});
+  var today = new Date().toLocaleDateString('en-US',{timeZone:TZ,weekday:'short'});
+  return d===today ? '' : d+' ';
+}
+function rel(ms, now){
+  if(ms==null) return '';
+  var s = Math.round((ms-now)/1000), past = s<0; s=Math.abs(s);
+  var txt;
+  if(s<60) txt='just now', past=past;
+  else if(s<3600) txt=Math.round(s/60)+'m';
+  else if(s<86400) txt=Math.round(s/3600)+'h';
+  else txt=Math.round(s/86400)+'d';
+  if(s<60) return 'just now';
+  return past ? txt+' ago' : 'in '+txt;
+}
+function esc(x){ return String(x==null?'':x).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+
+function render(d){
+  var now = d.nowMs;
+  document.getElementById('sub').textContent =
+    'updated ' + clock(now) + ' CT · ' + d.agents.length + ' agents';
+
+  // group agents
+  var groups = {}, order=[];
+  d.agents.forEach(function(a){ if(!groups[a.group]){groups[a.group]=[];order.push(a.group);} groups[a.group].push(a); });
+
+  // activity per agent (today)
+  var byAgent={};
+  d.today.forEach(function(e){ (byAgent[e.agentId]=byAgent[e.agentId]||[]).push(e); });
+
+  var html='';
+  order.forEach(function(g){
+    html += '<div class="grp">'+esc(g)+'</div>';
+    groups[g].forEach(function(a){
+      var open = openIds[a.id] ? ' open':'';
+      var lastTxt = a.lastMs? (dayLabel(a.lastMs)+clock(a.lastMs)+' · '+rel(a.lastMs,now)) : 'no run recorded';
+      var nextTxt = a.nextMs? (dayLabel(a.nextMs)+clock(a.nextMs)) : '—';
+      var evs = byAgent[a.id]||[];
+      var body = '<div class="kv"><b>Schedule:</b> '+esc(a.schedule)+'</div>'
+        + '<div class="kv"><b>Last run:</b> '+esc(lastTxt)+(a.lastResult?(' · '+esc(a.lastResult)):'')+'</div>'
+        + '<div class="kv"><b>Next run:</b> '+esc(a.nextMs?dayLabel(a.nextMs)+clock(a.nextMs)+' · '+rel(a.nextMs,now):'—')+'</div>'
+        + (a.summary?('<div class="kv"><b>Last:</b> '+esc(a.summary)+'</div>'):'')
+        + (a.details?('<pre class="det">'+esc(JSON.stringify(a.details,null,2))+'</pre>'):'');
+      if(evs.length){
+        body += '<div class="kv" style="margin-top:9px"><b>Today ('+evs.length+')</b></div>';
+        evs.forEach(function(e){
+          body += '<div class="ev"><span class="et">'+clock(e.ms)+'</span> '
+            + '<span class="estatus" style="color:var(--'+(e.status==='error'?'err':e.status==='warn'?'warn':'ok')+')">'
+            + '</span> '+esc(e.summary)
+            + (e.details?('<pre class="det">'+esc(JSON.stringify(e.details,null,2))+'</pre>'):'')+'</div>';
+        });
+      }
+      html += '<div class="agent'+open+'" data-id="'+esc(a.id)+'">'
+        + '<div class="row">'
+          + '<span class="dot '+esc(a.status)+'"></span>'
+          + '<div class="nm"><div class="t">'+esc(a.name)+'</div><div class="s">'+esc(a.schedule)+' · last '+esc(a.lastMs?rel(a.lastMs,now):'—')+'</div></div>'
+          + '<div class="rt"><div class="next">'+esc(nextTxt)+'</div><div class="nextlbl">'+esc(a.nextMs?rel(a.nextMs,now):'next run')+'</div></div>'
+          + '<span class="caret">›</span>'
+        + '</div>'
+        + '<div class="body">'+body+'</div>'
+      + '</div>';
+    });
+  });
+  document.getElementById('agents').innerHTML = html;
+
+  document.querySelectorAll('.agent').forEach(function(el){
+    el.querySelector('.row').addEventListener('click',function(){
+      var id = el.getAttribute('data-id');
+      openIds[id] = !openIds[id];
+      el.classList.toggle('open');
+    });
+  });
+
+  // timeline
+  var tl = document.getElementById('timeline');
+  if(!d.today.length){ tl.innerHTML='<div class="muted">Nothing logged yet today.</div>'; }
+  else {
+    tl.innerHTML = d.today.map(function(e){
+      return '<div class="tl"><span class="tlt">'+clock(e.ms)+'</span>'
+        + '<span class="tln">'+esc(e.name)+'</span>'
+        + '<span class="tls">'+esc(e.summary)+'</span></div>';
+    }).join('');
+  }
+}
+
+function load(){
+  fetch(BACKEND+'?op=dashboard&_='+Date.now(), {redirect:'follow'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(d && d.ok) render(d); else showErr(d && d.error); })
+    .catch(function(e){ showErr(e.message); });
+}
+function showErr(msg){
+  document.getElementById('sub').textContent = 'error: '+(msg||'could not load');
+}
+
+document.getElementById('refreshBtn').addEventListener('click', load);
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>
