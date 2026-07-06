@@ -89,6 +89,7 @@ function rel(ms, now){
   if(s<60) return 'just now';
   return past ? txt+' ago' : 'in '+txt;
 }
+function nextRel(ms, now){ if(ms==null) return 'next run'; return ms<=now ? 'due now' : rel(ms, now); }
 function esc(x){ return String(x==null?'':x).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
 
 function render(d){
@@ -114,7 +115,7 @@ function render(d){
       var evs = byAgent[a.id]||[];
       var body = '<div class="kv"><b>Schedule:</b> '+esc(a.schedule)+'</div>'
         + '<div class="kv"><b>Last run:</b> '+esc(lastTxt)+(a.lastResult?(' · '+esc(a.lastResult)):'')+'</div>'
-        + '<div class="kv"><b>Next run:</b> '+esc(a.nextMs?dayLabel(a.nextMs)+clock(a.nextMs)+' · '+rel(a.nextMs,now):'—')+'</div>'
+        + '<div class="kv"><b>Next run:</b> '+esc(a.nextMs?dayLabel(a.nextMs)+clock(a.nextMs)+' · '+nextRel(a.nextMs,now):'—')+'</div>'
         + (a.summary?('<div class="kv"><b>Last:</b> '+esc(a.summary)+'</div>'):'')
         + (a.details?('<pre class="det">'+esc(JSON.stringify(a.details,null,2))+'</pre>'):'');
       if(evs.length){
@@ -130,7 +131,7 @@ function render(d){
         + '<div class="row">'
           + '<span class="dot '+esc(a.status)+'"></span>'
           + '<div class="nm"><div class="t">'+esc(a.name)+'</div><div class="s">'+esc(a.schedule)+' · last '+esc(a.lastMs?rel(a.lastMs,now):'—')+'</div></div>'
-          + '<div class="rt"><div class="next">'+esc(nextTxt)+'</div><div class="nextlbl">'+esc(a.nextMs?rel(a.nextMs,now):'next run')+'</div></div>'
+          + '<div class="rt"><div class="next">'+esc(nextTxt)+'</div><div class="nextlbl">'+esc(nextRel(a.nextMs,now))+'</div></div>'
           + '<span class="caret">›</span>'
         + '</div>'
         + '<div class="body">'+body+'</div>'
