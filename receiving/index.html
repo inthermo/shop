@@ -360,6 +360,8 @@
       color: #1a1a2e;
     }
     .po-input:focus { border-color: #3b82f6; }
+    .po-input.po-required { border-color: #dc2626; background: #fef2f2; }
+    .po-req-label { color: #dc2626; font-weight: 700; }
 
     /* ---- NOTES FIELD ---- */
     .notes-input {
@@ -812,7 +814,7 @@
       </div>
 
       <div id="poSection" style="display:none">
-        <div class="section-label">PO / Reference number</div>
+        <div class="section-label" id="poLabel">PO / Reference number</div>
         <div class="po-hint" id="poHint"></div>
         <input class="po-input" id="poInput" type="text"
                placeholder="Optional"
@@ -879,6 +881,13 @@ function call(op, payload) {
 // =====================================================================
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
+var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
+
+// A customer whose instruction note asks for a PO (e.g. "Write PO# from paperwork")
+// should get a Required PO field, not "Optional".
+function noteRequiresPo(noteText) {
+  return /\bp\.?\s?o\.?\b|purchase order/i.test(noteText || '');
+}
 var itemRows        = [];   // [{name, qty}]
 var toastTimer      = null;
 var openOrders       = [];  // [{so_id, so_number, po_number, is_blanket, items}]
@@ -1104,8 +1113,20 @@ function selectCustomer(name) {
 
   // The staff note now lives in the prominent Notes & Instructions banner above,
   // so the PO field keeps a plain placeholder rather than echoing the same text.
+  // If that note asks for a PO, the field is Required instead of Optional.
   document.getElementById('poHint').textContent = '';
-  document.getElementById('poInput').placeholder = 'Optional';
+  poIsRequired = noteRequiresPo(noteText);
+  var poInputEl = document.getElementById('poInput');
+  var poLabelEl = document.getElementById('poLabel');
+  if (poIsRequired) {
+    poInputEl.placeholder = 'Required — from paperwork';
+    poInputEl.classList.add('po-required');
+    poLabelEl.innerHTML = 'PO / Reference number <span class="po-req-label">• required</span>';
+  } else {
+    poInputEl.placeholder = 'Optional';
+    poInputEl.classList.remove('po-required');
+    poLabelEl.textContent = 'PO / Reference number';
+  }
 
   // Show items/PO/notes/submit sections
   document.getElementById('itemsSection').style.display = 'block';
@@ -1135,7 +1156,10 @@ function clearCustomer() {
   document.getElementById('notesSection').style.display = 'none';
   document.getElementById('notesInput').value = '';
   document.getElementById('submitBtn').style.display = 'none';
+  poIsRequired = false;
   document.getElementById('poInput').placeholder = 'Optional';
+  document.getElementById('poInput').classList.remove('po-required');
+  document.getElementById('poLabel').textContent = 'PO / Reference number';
   renderItemList();
 }
 
@@ -1402,6 +1426,11 @@ function onSubmit() {
   if (!activeRows.length) { showToast('Add at least one item', 3000); return; }
   var description = activeRows.map(function (r) { return r.qty + '× ' + r.name; }).join(', ');
   var poNum = document.getElementById('poInput').value.trim();
+  if (poIsRequired && !poNum) {
+    showToast('Enter the PO# from the paperwork', 3500);
+    document.getElementById('poInput').focus();
+    return;
+  }
   var note  = document.getElementById('notesInput').value.trim();
   var now  = new Date();
   var date = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
