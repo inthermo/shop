@@ -31,6 +31,15 @@
   button:disabled{ opacity:.5; }
   pre{ white-space:pre-wrap; background:#fbfcfd; border:1px solid var(--line); border-radius:10px; padding:12px; font-size:14px; }
   .muted{ color:#667; } .ok{ color:var(--ok); font-weight:600; } .err{ color:var(--err); font-weight:600; }
+  details{ margin:4px 0 24px; }
+  summary{ cursor:pointer; font-weight:600; font-size:14px; padding:8px 0; }
+  .cfg table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .cfg th{ text-align:left; color:#667; font-weight:600; padding:4px; }
+  .cfg td{ padding:4px; border-top:1px solid #eef1f4; }
+  .cfg input[type=text]{ width:100%; height:36px; font-size:14px; padding:0 8px; border:1px solid var(--line); border-radius:8px; }
+  .cfg select{ height:36px; font-size:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .cfg h3{ font-size:14px; margin:16px 0 6px; }
+  .cfg .savebtn{ flex:none; min-width:0; font-size:15px; padding:10px 18px; }
 </style>
 </head>
 <body>
@@ -50,6 +59,11 @@
 
   <div id="status" class="muted"></div>
   <div class="card" id="out" style="display:none"><pre id="outpre"></pre></div>
+
+  <details class="cfg">
+    <summary>⚙️ Settings — ovens, part codes &amp; order email</summary>
+    <div class="card" id="cfgCard"><span class="muted">Loading…</span></div>
+  </details>
 
 </div>
 
@@ -71,17 +85,95 @@ function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&am
 function setStatus(m,cls){ var e=document.getElementById('status'); e.textContent=m||''; e.className=cls||'muted'; }
 
 window.onload = function(){
-  api('catalog').then(function(c){
+  loadCatalog().catch(function(e){ document.getElementById('ovens').innerHTML='<span class="err">Load error: '+esc(e.message)+'</span>'; });
+};
+
+// Fetches the config-driven catalog and (re)builds the oven list + Settings,
+// preserving checked ovens and typed quantities across a settings save.
+function loadCatalog(){
+  return api('catalog').then(function(c){
     CAT = c;
+    var checked = selectedOvenIds();
     var h=document.getElementById('ovens'); h.innerHTML='';
     c.ovens.forEach(function(o){
-      var lab=document.createElement('label'); lab.className='oven';
-      lab.innerHTML='<input type="checkbox" data-id="'+o.id+'" onchange="toggleOven(this)"> '+
-        '<span>'+esc(o.label)+'</span><span class="serial">'+esc(o.serial)+' · '+o.burner+'</span>';
+      var on = checked.indexOf(o.id) >= 0;
+      var lab=document.createElement('label'); lab.className='oven'+(on?' on':'');
+      lab.innerHTML='<input type="checkbox" data-id="'+o.id+'"'+(on?' checked':'')+' onchange="toggleOven(this)"> '+
+        '<span>'+esc(o.label)+'</span><span class="serial">'+esc(o.serial)+' · '+esc(o.burner)+'</span>';
       h.appendChild(lab);
     });
-  }).catch(function(e){ document.getElementById('ovens').innerHTML='<span class="err">Load error: '+esc(e.message)+'</span>'; });
-};
+    renderSettings();
+    if (checked.length) renderParts(); // renderParts preserves in-progress quantities
+  });
+}
+
+function renderSettings(){
+  if(!CAT) return;
+  var html='<p class="muted" style="margin-top:0">Part codes, oven serials and the order email live on the backend — Save applies for everyone, no redeploy needed.</p>';
+  html+='<h3>Order email</h3>'
+    +'<div class="muted" style="font-size:12px">Order goes to</div>'
+    +'<input type="text" id="cfgOrderTo" value="'+esc(CAT.orderTo||'')+'">'
+    +'<div class="muted" style="font-size:12px;margin-top:8px">PO text</div>'
+    +'<input type="text" id="cfgOrderPo" value="'+esc(CAT.po||'')+'">';
+  html+='<h3>Ovens</h3><table><thead><tr><th>Label</th><th>Serial</th><th>Burner</th></tr></thead><tbody>';
+  CAT.ovens.forEach(function(o,i){
+    var opts=Object.keys(CAT.flameRod).map(function(k){ return '<option'+(o.burner===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('');
+    html+='<tr><td><input type="text" data-oi="'+i+'" data-f="label" value="'+esc(o.label)+'"></td>'
+      +'<td><input type="text" data-oi="'+i+'" data-f="serial" value="'+esc(o.serial)+'"></td>'
+      +'<td><select data-oi="'+i+'" data-f="burner">'+opts+'</select></td></tr>';
+  });
+  html+='</tbody></table>';
+  html+='<h3>Flame rods (per burner type)</h3><table><thead><tr><th>Burner</th><th>Part code</th><th>Description</th><th>Note</th></tr></thead><tbody>';
+  Object.keys(CAT.flameRod).forEach(function(k){
+    var fr=CAT.flameRod[k]||{};
+    html+='<tr><td>'+esc(k)+'</td>'
+      +'<td><input type="text" data-fr="'+esc(k)+'" data-f="code" value="'+esc(fr.code||'')+'"></td>'
+      +'<td><input type="text" data-fr="'+esc(k)+'" data-f="desc" value="'+esc(fr.desc||'')+'"></td>'
+      +'<td><input type="text" data-fr="'+esc(k)+'" data-f="note" value="'+esc(fr.note||'')+'"></td></tr>';
+  });
+  html+='</tbody></table>';
+  html+='<h3>Thermocouples</h3><table><thead><tr><th>Label</th><th>Part code</th><th>Description</th></tr></thead><tbody>';
+  CAT.thermocouples.forEach(function(tc,i){
+    html+='<tr><td><input type="text" data-ti="'+i+'" data-f="label" value="'+esc(tc.label||'')+'"></td>'
+      +'<td><input type="text" data-ti="'+i+'" data-f="code" value="'+esc(tc.code||'')+'"></td>'
+      +'<td><input type="text" data-ti="'+i+'" data-f="desc" value="'+esc(tc.desc||'')+'"></td></tr>';
+  });
+  html+='</tbody></table>';
+  html+='<div class="btnrow" style="margin:14px 0 0"><button class="primary savebtn" onclick="saveCfg()">Save settings</button></div>'
+    +'<div id="cfgStatus" class="muted" style="margin-top:8px"></div>';
+  document.getElementById('cfgCard').innerHTML=html;
+}
+
+function saveCfg(){
+  var cfg={
+    orderTo: document.getElementById('cfgOrderTo').value.trim(),
+    orderPo: document.getElementById('cfgOrderPo').value.trim(),
+    ovens: CAT.ovens.map(function(o){ return { id:o.id, label:o.label, serial:o.serial, burner:o.burner }; }),
+    flameRod: JSON.parse(JSON.stringify(CAT.flameRod)),
+    thermocouples: CAT.thermocouples.map(function(t){ return { key:t.key, code:t.code, desc:t.desc, label:t.label }; })
+  };
+  [].slice.call(document.querySelectorAll('#cfgCard [data-oi]')).forEach(function(el){
+    cfg.ovens[+el.getAttribute('data-oi')][el.getAttribute('data-f')] = el.value;
+  });
+  [].slice.call(document.querySelectorAll('#cfgCard [data-fr]')).forEach(function(el){
+    cfg.flameRod[el.getAttribute('data-fr')][el.getAttribute('data-f')] = el.value;
+  });
+  [].slice.call(document.querySelectorAll('#cfgCard [data-ti]')).forEach(function(el){
+    cfg.thermocouples[+el.getAttribute('data-ti')][el.getAttribute('data-f')] = el.value;
+  });
+  var st=document.getElementById('cfgStatus'); st.textContent='Saving…'; st.className='muted';
+  api('saveConfig', cfg).then(function(){
+    // Re-render from the backend; loadCatalog + renderParts preserve checked
+    // ovens and typed quantities, then re-mark the (rebuilt) status line.
+    return loadCatalog().then(function(){
+      var st2=document.getElementById('cfgStatus');
+      st2.textContent='Saved ✓'; st2.className='ok';
+    });
+  }).catch(function(e){
+    var st2=document.getElementById('cfgStatus');
+    st2.textContent=e.message; st2.className='err';
+  });
+}
 
 function toggleOven(cb){
   cb.closest('.oven').classList.toggle('on', cb.checked);
