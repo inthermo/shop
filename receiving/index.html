@@ -1480,32 +1480,18 @@ function onSubmit() {
 }
 
 function submitMultipleOrders() {
-  var orders = selectedOrderIdxs.map(function (i) { return openOrders[i]; });
+  var idxs   = selectedOrderIdxs.slice();
+  var orders = idxs.map(function (i) { return openOrders[i]; });
   var now    = new Date();
   var date   = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
   var note   = document.getElementById('notesInput').value.trim();
   var btn    = document.getElementById('submitBtn');
   var total  = orders.length;
-  var done   = 0;
-  var errors = 0;
 
-  btn.disabled = true;
-  btn.textContent = 'Submitting 1 of ' + total + '…';
-
-  function submitNext(idx) {
-    if (idx >= total) {
-      btn.disabled = false;
-      btn.textContent = 'Submit';
-      if (errors) {
-        showToast(done + ' of ' + total + ' submitted (' + errors + ' failed)', 5000);
-      } else {
-        showToast('✓ ' + total + ' POs received', 3500);
-        clearCustomer();
-        switchTab('log');
-      }
-      return;
-    }
-    var o    = orders[idx];
+  // Build ALL entries and send them in ONE batch call — the old per-PO serial loop
+  // was ~4-5s per PO on the iPad, and a failure mid-loop left the already-saved POs
+  // selected so a retry duplicated them.
+  var entries = orders.map(function (o) {
     // Use the quantities the worker actually typed in the merged item list,
     // matched back to this PO by part name. qty 0 = not received → omit.
     // Falls back to 'Received' if nothing on this PO was counted, so every
@@ -1517,7 +1503,6 @@ function submitMultipleOrders() {
         return (row && row.qty > 0) ? (row.qty + '× ' + it.part_number) : null;
       })
       .filter(Boolean);
-    var desc = lines.length ? lines.join(', ') : 'Received';
     // Queue the actual received part names (not the "qty× " description) for photos.
     var itemNames = (o.items || [])
       .map(function (it) {
@@ -1525,16 +1510,47 @@ function submitMultipleOrders() {
         return (row && row.qty > 0) ? it.part_number : null;
       })
       .filter(Boolean);
-    btn.textContent = 'Submitting ' + (idx + 1) + ' of ' + total + '…';
-    call('submitReceiving', { date: date, customer: selectedCust.name, description: desc, poNum: o.po_number, note: note, items: itemNames })
-      .then(function (result) {
-        if (result && result.ok) { done++; } else { errors++; }
-        submitNext(idx + 1);
-      })
-      .catch(function () { errors++; submitNext(idx + 1); });
-  }
+    return {
+      customer:    selectedCust.name,
+      description: lines.length ? lines.join(', ') : 'Received',
+      poNum:       o.po_number,
+      note:        note,
+      items:       itemNames
+    };
+  });
 
-  submitNext(0);
+  btn.disabled = true;
+  btn.textContent = 'Submitting ' + total + ' POs…';
+
+  call('submitReceivingBatch', { entries: entries })
+    .then(function (result) {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+      if (result && result.ok) {
+        var results = result.results || [];
+        var failedIdxs = [];
+        results.forEach(function (r, i) { if (!(r && r.ok)) failedIdxs.push(idxs[i]); });
+        if (!failedIdxs.length) {
+          showToast('✓ ' + total + ' POs received', 3500);
+          clearCustomer();
+          switchTab('log');
+        } else {
+          // Keep ONLY the failed POs selected so a retry can't duplicate the saved ones.
+          selectedOrderIdxs = failedIdxs;
+          renderOpenOrders();
+          updateFromSelectedOrders();
+          showToast((total - failedIdxs.length) + ' of ' + total + ' submitted — '
+            + failedIdxs.length + ' failed (still selected, tap Submit to retry)', 6000);
+        }
+      } else {
+        showToast('Submit failed: ' + ((result && result.error) || 'unknown') + ' — nothing saved, try again', 6000);
+      }
+    })
+    .catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+      showToast('Submit failed: ' + e.message + ' — try again', 6000);
+    });
 }
 
 // =====================================================================
