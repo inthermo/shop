@@ -460,6 +460,7 @@
     .log-table tbody tr:last-child td { border-bottom: none; }
     .log-table tr.done td { opacity: 0.6; }
     .log-col-date { color: #6b7280; width: 12%; white-space: nowrap; font-weight: 600; }
+    .log-time { font-weight: 400; font-size: 12px; color: #9ca3af; margin-top: 2px; }
     .log-col-customer { font-weight: 700; color: #1a1a2e; width: 20%; }
     .log-col-po { color: #6b7280; width: 14%; white-space: nowrap; }
     .log-col-items { color: #374151; }
@@ -911,6 +912,7 @@ var selectedOrderIdxs = []; // indices of selected orders
 var _TODAY      = '';
 var _ALL_ORDERS = {};
 var _TODAY_LOG  = null;
+var _LOG_TIMER  = null;   // interval handle for the Log tab's auto-refresh
 var _PRELOAD    = null;
 var _PARTS      = {};   // { customerNameLower: [part name strings] } — per-customer item vocab
 
@@ -1007,6 +1009,10 @@ window.addEventListener('load', function () {
     document.getElementById('logContent').innerHTML =
       '<div class="loading-msg">Could not reach the server.<br>Check connection and reload.</div>';
   });
+
+  // Log is the default tab on load, so start its auto-refresh here (switchTab
+  // only fires on a tab tap and wouldn't otherwise arm the timer on first paint).
+  startLogAutoRefresh();
 });
 
 function onRoutingLoaded(result) {
@@ -1057,8 +1063,31 @@ function switchTab(tab) {
     // instant. Kick a silent background refresh (no "Loading…" wipe) so it stays current.
     if (_TODAY_LOG && _TODAY_LOG.entries) loadLog(true);
     else loadLog();
+    startLogAutoRefresh();
+  } else {
+    stopLogAutoRefresh();
   }
 }
+
+// Keep the Log tab live for the shop floor without them tapping ↻. A silent refresh
+// every 30s while the tab is open, plus an immediate one whenever the iPad tab regains
+// focus (e.g. after another worker submits on a different device). Only runs while the
+// Log tab is showing — cleared on tab switch — so the intake form never re-fetches under
+// the worker mid-entry.
+function startLogAutoRefresh() {
+  stopLogAutoRefresh();
+  _LOG_TIMER = setInterval(function () {
+    if (document.hidden) return;               // don't poll a backgrounded tab
+    if (document.getElementById('page-log').classList.contains('active')) loadLog(true);
+  }, 30000);
+}
+function stopLogAutoRefresh() {
+  if (_LOG_TIMER) { clearInterval(_LOG_TIMER); _LOG_TIMER = null; }
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden && document.getElementById('page-log').classList.contains('active')) loadLog(true);
+});
 
 // =====================================================================
 // CUSTOMER SEARCH
@@ -1622,7 +1651,8 @@ function renderLog(result) {
       + ' data-date="' + esc(e.date) + '"'
       + ' data-cust="' + esc(String(e.customer).toLowerCase()) + '"'
       + ' data-done="' + (e.done ? '1' : '0') + '">'
-      + '<td class="log-col-date">' + esc(fmtShortDate(e.date)) + '</td>'
+      + '<td class="log-col-date">' + esc(fmtShortDate(e.date))
+        + (e.time ? '<div class="log-time">' + esc(e.time) + '</div>' : '') + '</td>'
       + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
       + '<td class="log-col-po">' + po + '</td>'
       + '<td class="log-col-items">' + esc(e.description) + '</td>'
