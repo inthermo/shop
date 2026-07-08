@@ -198,6 +198,27 @@ function init(s){
   document.getElementById('reminderBtn').textContent = s.reminderOn ? 'Turn off' : 'Turn on 5-week reminder';
 }
 
+// Refresh state + rebuild the UI WITHOUT losing work in progress. init() re-seeds the
+// on-hand inputs from lastCounts and unchecks every tank — so saving a par mid-count
+// used to wipe everything the user had typed this session. Capture the form first,
+// re-init, then restore counts / tank checks / need-by.
+function reinitPreserving(){
+  var form = gatherForm();
+  return api('state').then(init).then(function(){
+    Object.keys(form.counts).forEach(function(name){
+      if(form.counts[name]==='') return;
+      var inp = document.querySelector('#invBody input[data-name="'+CSS.escape(name)+'"]');
+      if(inp) inp.value = form.counts[name];
+    });
+    form.tanks.forEach(function(t){
+      document.querySelectorAll('#tanks input').forEach(function(c){
+        if(c.value===t){ c.checked=true; c.parentNode.classList.add('on'); }
+      });
+    });
+    if(form.needBy) document.getElementById('needBy').value = form.needBy;
+  });
+}
+
 function gatherForm(){
   var counts={};
   document.querySelectorAll('#invBody input[type=number]').forEach(function(inp){
@@ -269,7 +290,7 @@ function saveCfg(){
   setStatus('cfgStatus','Saving…');
   api('saveConfig', cfg).then(function(){
     setStatus('cfgStatus','Saved ✓','ok');
-    api('state').then(init).catch(function(){});
+    reinitPreserving().catch(function(){});
   }).catch(function(e){ setStatus('cfgStatus',e.message,'err'); });
 }
 
@@ -277,7 +298,7 @@ function toggleReminder(){
   var on = STATE.reminderOn;
   document.getElementById('reminderBtn').disabled=true;
   api(on ? 'turnOffReminder' : 'installReminder').then(function(){
-    api('state').then(init).catch(function(){});
+    reinitPreserving().catch(function(){});
     document.getElementById('reminderBtn').disabled=false;
   }).catch(function(e){
     document.getElementById('reminderBtn').disabled=false;

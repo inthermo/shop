@@ -97,6 +97,17 @@ function renderParts(){
   var enable = ids.length>0;
   document.getElementById('previewBtn').disabled = !enable;
   document.getElementById('dropBtn').disabled = !enable;
+
+  // Preserve quantities already typed — the rebuild used to reset every input to 0,
+  // so checking a second oven silently wiped the first oven's entered order.
+  var savedVals = {};
+  [].slice.call(host.querySelectorAll('.ovenblock')).forEach(function(card){
+    var oid = card.getAttribute('data-oid');
+    [].slice.call(card.querySelectorAll('input[data-key]')).forEach(function(inp){
+      if (Number(inp.value||0) > 0) savedVals[oid+':'+inp.getAttribute('data-key')] = inp.value;
+    });
+  });
+
   if(!enable){ host.innerHTML='<div class="card muted">Pick one or more ovens above.</div>'; return; }
 
   host.innerHTML='';
@@ -110,6 +121,15 @@ function renderParts(){
     CAT.thermocouples.forEach(function(tc){ rows += partRow(tc.key, tc.code, tc.desc); });
     card.innerHTML = rows;
     host.appendChild(card);
+  });
+
+  // Restore preserved quantities into the rebuilt inputs.
+  [].slice.call(host.querySelectorAll('.ovenblock')).forEach(function(card){
+    var oid = card.getAttribute('data-oid');
+    [].slice.call(card.querySelectorAll('input[data-key]')).forEach(function(inp){
+      var v = savedVals[oid+':'+inp.getAttribute('data-key')];
+      if (v) inp.value = v;
+    });
   });
 }
 function partRow(key, code, desc){
