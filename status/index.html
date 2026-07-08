@@ -81,16 +81,19 @@ function dayLabel(ms){
 function rel(ms, now){
   if(ms==null) return '';
   var s = Math.round((ms-now)/1000), past = s<0; s=Math.abs(s);
+  if(s<60) return 'just now';
   var txt;
-  if(s<60) txt='just now', past=past;
-  else if(s<3600) txt=Math.round(s/60)+'m';
+  if(s<3600) txt=Math.round(s/60)+'m';
   else if(s<86400) txt=Math.round(s/3600)+'h';
   else txt=Math.round(s/86400)+'d';
-  if(s<60) return 'just now';
   return past ? txt+' ago' : 'in '+txt;
 }
 function nextRel(ms, now){ if(ms==null) return 'next run'; return ms<=now ? 'due now' : rel(ms, now); }
-function esc(x){ return String(x==null?'':x).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+// Includes " — the heartbeat endpoint is anonymous, and unescaped quotes in a pushed
+// name/summary could break out of the data-id attribute below (attribute injection).
+function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+var lastPayload = '';
 
 function render(d){
   var now = d.nowMs;
@@ -123,7 +126,7 @@ function render(d){
         evs.forEach(function(e){
           body += '<div class="ev"><span class="et">'+clock(e.ms)+'</span> '
             + '<span class="estatus" style="color:var(--'+(e.status==='error'?'err':e.status==='warn'?'warn':'ok')+')">'
-            + '</span> '+esc(e.summary)
+            + '●</span> '+esc(e.summary)
             + (e.details?('<pre class="det">'+esc(JSON.stringify(e.details,null,2))+'</pre>'):'')+'</div>';
         });
       }
@@ -140,14 +143,6 @@ function render(d){
   });
   document.getElementById('agents').innerHTML = html;
 
-  document.querySelectorAll('.agent').forEach(function(el){
-    el.querySelector('.row').addEventListener('click',function(){
-      var id = el.getAttribute('data-id');
-      openIds[id] = !openIds[id];
-      el.classList.toggle('open');
-    });
-  });
-
   // timeline
   var tl = document.getElementById('timeline');
   if(!d.today.length){ tl.innerHTML='<div class="muted">Nothing logged yet today.</div>'; }
@@ -163,16 +158,40 @@ function render(d){
 function load(){
   fetch(BACKEND+'?op=dashboard&_='+Date.now(), {redirect:'follow'})
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d && d.ok) render(d); else showErr(d && d.error); })
+    .then(function(d){
+      if(!(d && d.ok)){ showErr(d && d.error); return; }
+      // Skip the full DOM rebuild when nothing changed (except the clock) —
+      // avoids scroll/expansion jank on the iPad every 30s.
+      var key = JSON.stringify([d.agents, d.today]);
+      if(key === lastPayload) {
+        document.getElementById('sub').textContent =
+          'updated ' + clock(d.nowMs) + ' CT · ' + d.agents.length + ' agents';
+        return;
+      }
+      lastPayload = key;
+      render(d);
+    })
     .catch(function(e){ showErr(e.message); });
 }
 function showErr(msg){
   document.getElementById('sub').textContent = 'error: '+(msg||'could not load');
 }
 
+// One delegated click handler bound ONCE — the old code re-bound a listener per row
+// on every render.
+document.getElementById('agents').addEventListener('click', function(ev){
+  var el = ev.target.closest ? ev.target.closest('.agent') : null;
+  if(!el || !ev.target.closest('.row')) return;
+  var id = el.getAttribute('data-id');
+  openIds[id] = !openIds[id];
+  el.classList.toggle('open');
+});
+
 document.getElementById('refreshBtn').addEventListener('click', load);
 load();
-setInterval(load, 30000);
+// Don't poll a hidden tab; refresh immediately when it becomes visible again.
+setInterval(function(){ if(!document.hidden) load(); }, 30000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) load(); });
 </script>
 </body>
 </html>

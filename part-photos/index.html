@@ -98,7 +98,7 @@ function call(op, payload) {
   return fetch(BACKEND_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ op: op, payload: payload || {} }),
+    body: JSON.stringify({ op: op, token: 'ri-shop-7c2e91', payload: payload || {} }),
     redirect: 'follow'
   }).then(function (r) { return r.json(); });
 }

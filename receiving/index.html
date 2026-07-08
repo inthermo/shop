@@ -871,7 +871,7 @@ function call(op, payload) {
   return fetch(BACKEND_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ op: op, payload: payload || {} }),
+    body: JSON.stringify({ op: op, token: 'ri-shop-7c2e91', payload: payload || {} }),
     redirect: 'follow'
   }).then(function (r) { return r.json(); });
 }
@@ -949,30 +949,60 @@ var TOP_CUSTOMERS = [
 // =====================================================================
 // INIT — fetch bootstrap data (routing, open orders, today's log) on load
 // =====================================================================
+var LS_BOOT_KEY = 'ri_bootstrap_v1';
+
+// Apply a bootstrap payload (cached or fresh) to the UI. Safe to run twice —
+// the fresh apply just swaps the data arrays and re-renders the grid/log.
+function applyBootstrap(res) {
+  _TODAY      = res.today;
+  _ALL_ORDERS = res.orders || {};
+  _TODAY_LOG  = res.log || null;
+  _PRELOAD    = res.routing || null;
+  _PARTS      = res.parts || {};
+
+  var logDateEl = document.getElementById('logDate');
+  logDateEl.value = _TODAY;
+  // Allow browsing the Log back ~30 days, but no further forward than today.
+  logDateEl.max = _TODAY;
+  var minD = new Date(_TODAY + 'T00:00:00');
+  minD.setDate(minD.getDate() - 30);
+  logDateEl.min = minD.getFullYear() + '-' + pad2(minD.getMonth() + 1) + '-' + pad2(minD.getDate());
+
+  onRoutingLoaded(_PRELOAD);
+  if (_TODAY_LOG && _TODAY_LOG.entries) { renderLog(_TODAY_LOG); }
+}
+
 window.addEventListener('load', function () {
   if (location.search.indexOf('selftest') !== -1) { runSelfTest(); return; }
 
+  // Stale-while-revalidate: paint INSTANTLY from the last visit's bootstrap
+  // (the iPad reloads this page many times a day; every load used to block the
+  // customer picker on a 3-8s server round-trip), then fetch fresh data in the
+  // background and swap it in.
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem(LS_BOOT_KEY) || 'null'); } catch (e) {}
+  if (cached && cached.ok) applyBootstrap(cached);
+
+  // True first visit (no cache): unlock the customer picker the moment routing
+  // lands instead of waiting on the full bootstrap (log + parts are the heavy part).
+  if (!cached) {
+    call('bootstrapRouting', {}).then(function (r) {
+      if (r && r.ok && !allCustomers.length) {
+        if (!_TODAY) _TODAY = r.today;
+        onRoutingLoaded(r.routing);
+      }
+    }).catch(function () {});
+  }
+
   call('bootstrap', {}).then(function (res) {
-    if (!res || !res.ok) { showToast(res && res.error || 'bootstrap failed', 6000); return; }
-    _TODAY      = res.today;
-    _ALL_ORDERS = res.orders || {};
-    _TODAY_LOG  = res.log || null;
-    _PRELOAD    = res.routing || null;
-    _PARTS      = res.parts || {};
-
-    var logDateEl = document.getElementById('logDate');
-    logDateEl.value = _TODAY;
-    // Allow browsing the Log back ~30 days, but no further forward than today.
-    logDateEl.max = _TODAY;
-    var minD = new Date(_TODAY + 'T00:00:00');
-    minD.setDate(minD.getDate() - 30);
-    logDateEl.min = minD.getFullYear() + '-' + pad2(minD.getMonth() + 1) + '-' + pad2(minD.getDate());
-
-    onRoutingLoaded(_PRELOAD);
-    // The Log is no longer fetched at boot (it's the heaviest payload and the
-    // Intake tab is the default). It lazy-loads the first time the Log tab opens.
-    if (_TODAY_LOG && _TODAY_LOG.entries) { renderLog(_TODAY_LOG); }
+    if (!res || !res.ok) {
+      if (!cached) showToast(res && res.error || 'bootstrap failed', 6000);
+      return;
+    }
+    try { localStorage.setItem(LS_BOOT_KEY, JSON.stringify(res)); } catch (e) {}
+    applyBootstrap(res);
   }).catch(function (err) {
+    if (cached && cached.ok) return;  // stale data on screen beats an error screen
     showToast('Load failed (network/CORS): ' + err.message, 8000);
     document.getElementById('logContent').innerHTML =
       '<div class="loading-msg">Could not reach the server.<br>Check connection and reload.</div>';
@@ -981,7 +1011,8 @@ window.addEventListener('load', function () {
 
 function onRoutingLoaded(result) {
   if (!result || !result.ok) {
-    showToast(result ? result.error : 'getRoutingData failed', 5000);
+    // Keep quiet if a cached routing list is already on screen — stale beats broken.
+    if (!allCustomers.length) showToast(result ? result.error : 'getRoutingData failed', 5000);
     return;
   }
   allCustomers = result.customers || [];
