@@ -1483,9 +1483,10 @@ function onSubmit() {
   var description = activeRows.map(function (r) { return r.qty + '× ' + r.name; }).join(', ');
   var poNum = document.getElementById('poInput').value.trim();
   if (poIsRequired && !poNum) {
-    showToast('Enter the PO# from the paperwork', 3500);
-    document.getElementById('poInput').focus();
-    return;
+    if (!confirm('Are you sure you want to submit without a PO?')) {
+      document.getElementById('poInput').focus();
+      return;
+    }
   }
   var note  = document.getElementById('notesInput').value.trim();
   var now  = new Date();
