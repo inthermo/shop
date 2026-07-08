@@ -58,6 +58,8 @@
 </header>
 <div class="wrap">
   <div id="agents"></div>
+  <div class="grp">Shippers printed (last 2 days)</div>
+  <div class="timeline" id="printlog"><div class="muted">loading…</div></div>
   <div class="grp">Today's activity</div>
   <div class="timeline" id="timeline"><div class="muted">loading…</div></div>
 </div>
@@ -89,6 +91,12 @@ function rel(ms, now){
   return past ? txt+' ago' : 'in '+txt;
 }
 function nextRel(ms, now){ if(ms==null) return 'next run'; return ms<=now ? 'due now' : rel(ms, now); }
+// "2026-07-08" -> "Wed 7/8". Build the Date from parts (local tz) so it never shifts a day.
+function fmtDay(s){
+  var p = String(s||'').split('-'); if(p.length!==3) return esc(s);
+  var dt = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return dt.toLocaleDateString('en-US',{weekday:'short'})+' '+Number(p[1])+'/'+Number(p[2]);
+}
 // Includes " — the heartbeat endpoint is anonymous, and unescaped quotes in a pushed
 // name/summary could break out of the data-id attribute below (attribute injection).
 function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -143,6 +151,19 @@ function render(d){
   });
   document.getElementById('agents').innerHTML = html;
 
+  // print log (last 2 days of packing slips, newest day first)
+  var pl = document.getElementById('printlog');
+  var days = (d.printLog && d.printLog.days) || [];
+  if(!days.length){ pl.innerHTML = '<div class="muted">No shippers printed in the last 2 days.</div>'; }
+  else {
+    pl.innerHTML = days.map(function(day){
+      var slips = day.slips || [];
+      var nums = slips.map(function(n){ return '#'+esc(n); }).join(' ');
+      return '<div class="tl"><span class="tlt" style="min-width:60px">'+fmtDay(day.date)+'</span>'
+        + '<span class="tls">'+nums+' <span style="color:#8894a0">('+slips.length+')</span></span></div>';
+    }).join('');
+  }
+
   // timeline
   var tl = document.getElementById('timeline');
   if(!d.today.length){ tl.innerHTML='<div class="muted">Nothing logged yet today.</div>'; }
@@ -162,7 +183,7 @@ function load(){
       if(!(d && d.ok)){ showErr(d && d.error); return; }
       // Skip the full DOM rebuild when nothing changed (except the clock) —
       // avoids scroll/expansion jank on the iPad every 30s.
-      var key = JSON.stringify([d.agents, d.today]);
+      var key = JSON.stringify([d.agents, d.today, d.printLog]);
       if(key === lastPayload) {
         document.getElementById('sub').textContent =
           'updated ' + clock(d.nowMs) + ' CT · ' + d.agents.length + ' agents';
