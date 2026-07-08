@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Truck Planner</title>
+  <!-- v2.0 — sheet-style truck grid: 3-wide rows, Front of Truck at top, rear door at bottom -->
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -14,87 +15,119 @@
 
     /* ---- top bar ---- */
     .bar {
-      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
       background: #1a1a2e; color: #fff; padding: 12px 16px;
       position: sticky; top: 0; z-index: 30;
     }
     .bar h1 { font-size: 18px; font-weight: 700; margin-right: auto; }
     .bar .day { font-size: 14px; color: #b9c0d0; font-weight: 500; }
-    .bar input[type=date] {
-      font-size: 14px; padding: 7px 9px; border-radius: 8px; border: none;
-    }
+    .bar input[type=date] { font-size: 14px; padding: 7px 9px; border-radius: 8px; border: none; }
     .bar button {
       font-size: 14px; font-weight: 600; padding: 9px 14px; border: none;
       border-radius: 8px; cursor: pointer; color: #fff; background: #3a4a7a;
     }
     .bar button.save { background: #1e9e5a; }
+    .bar button.danger { background: #8a3040; }
     .bar button:active { opacity: .8; }
     #status { font-size: 13px; color: #b9c0d0; min-width: 70px; }
 
     /* ---- layout ---- */
     .panels { display: flex; gap: 14px; padding: 14px; align-items: flex-start; }
-    @media (max-width: 860px) { .panels { flex-direction: column; } .panels > .panel { width: 100%; } }
+    @media (max-width: 900px) { .panels { flex-direction: column; } .panels > .panel { width: 100%; } }
     .panel {
       flex: 1; background: #fff; border-radius: 14px; padding: 12px;
       box-shadow: 0 1px 4px rgba(0,0,0,.08);
     }
-    .panel-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
     .panel-head .title { font-size: 17px; font-weight: 700; }
     .panel-head .start { font-size: 13px; color: #6b7280; }
     .panel-head .tot { margin-left: auto; font-size: 13px; color: #374151; font-weight: 600; }
-
-    /* ---- customer strip (count editor) ---- */
-    .custstrip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-    .chip {
-      display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px;
-      border-radius: 20px; font-size: 12.5px; font-weight: 600; color: #fff;
+    .panel-head button {
+      font-size: 13px; font-weight: 600; padding: 7px 11px; border: none;
+      border-radius: 8px; cursor: pointer; color: #fff; background: #3a4a7a;
     }
-    .chip .nm { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .chip .stp {
-      width: 22px; height: 22px; border-radius: 50%; border: none; cursor: pointer;
-      background: rgba(255,255,255,.28); color: #fff; font-size: 15px; font-weight: 700; line-height: 1;
-    }
-    .chip .ct { min-width: 16px; text-align: center; }
+    .panel-head button:active { opacity: .8; }
 
-    /* ---- tray + grid ---- */
+    /* ---- stop order list ---- */
+    .stops { margin-bottom: 10px; }
+    .stops .hd { font-size: 11px; font-weight: 700; color: #9098a8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    .stoprow { display: flex; align-items: center; gap: 8px; padding: 4px 2px; border-bottom: 1px solid #f0f2f5; }
+    .stoprow .num { width: 20px; text-align: right; font-size: 12px; font-weight: 700; color: #9098a8; }
+    .stoprow .snm {
+      flex: 1; font-size: 13.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px;
+      color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+    }
+    .stoprow .badges { font-size: 12px; color: #4b5563; font-weight: 600; white-space: nowrap; }
+    .stoprow .mv {
+      width: 34px; height: 30px; border: none; border-radius: 7px; cursor: pointer;
+      background: #e6e9f0; color: #374151; font-size: 14px; font-weight: 700;
+    }
+    .stoprow .mv:active { background: #c8cdd8; }
+    .stops .note { font-size: 11.5px; color: #9098a8; margin-top: 4px; }
+
+    /* ---- tray ---- */
     .tray {
       min-height: 46px; border: 2px dashed #c8cdd8; border-radius: 10px;
       padding: 6px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px;
       align-content: flex-start;
     }
-    .tray .lbl, .col .lbl {
+    .tray .lbl {
       width: 100%; font-size: 11px; font-weight: 700; color: #9098a8;
       text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px;
     }
-    .grid { display: flex; gap: 8px; }
-    .col {
-      flex: 1; min-height: 120px; background: #f6f7fa; border: 2px solid #e6e9f0;
-      border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px;
-      align-content: flex-start;
+    .tray.drop-hot { border-color: #3a4a7a; background: #eef1fb; }
+    .tray .tile { flex: 0 0 auto; }
+
+    /* ---- truck ---- */
+    .truck {
+      border: 3px solid #3a4152; border-radius: 14px; overflow: hidden; background: #fafbfc;
     }
-    .col.drop-hot { border-color: #3a4a7a; background: #eef1fb; }
+    .truck .cap {
+      text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .12em;
+      text-transform: uppercase; color: #fff; background: #3a4152; padding: 5px 0;
+    }
+    .trow {
+      display: grid; gap: 6px; padding: 5px 6px; min-height: 42px;
+      border-bottom: 1px dashed #e2e5ec; align-items: stretch;
+    }
+    .trow:last-of-type { border-bottom: none; }
+    .trow.drop-hot { background: #eef1fb; box-shadow: inset 0 0 0 2px #3a4a7a; border-radius: 4px; }
+    .trow.reject { background: #fbeaea; box-shadow: inset 0 0 0 2px #c0392b; }
 
     .tile {
       touch-action: none; cursor: grab;
-      padding: 8px 10px; border-radius: 9px; color: #fff; font-size: 13px; font-weight: 600;
+      padding: 7px 9px; border-radius: 9px; color: #fff; font-size: 12.5px; font-weight: 600;
       box-shadow: 0 1px 2px rgba(0,0,0,.15); line-height: 1.15;
-      display: flex; align-items: center; min-height: 34px;
+      display: flex; align-items: center; gap: 5px; min-height: 32px; overflow: hidden;
     }
+    .tile .ty {
+      font-size: 9.5px; font-weight: 800; letter-spacing: .05em; padding: 2px 4px;
+      border-radius: 4px; background: rgba(255,255,255,.25); flex: 0 0 auto;
+    }
+    .tile.t-pallet, .tile.t-bin { border: 2px dashed rgba(255,255,255,.65); }
+    .tile.t-bar { background: #3a4152 !important; justify-content: center; letter-spacing: .1em; }
     .tile.dragging { opacity: .35; }
     .tile.ghost {
       position: fixed; z-index: 100; pointer-events: none; opacity: .92;
       box-shadow: 0 6px 18px rgba(0,0,0,.3); transform: scale(1.05);
     }
-    .tray .tile { flex: 0 0 auto; }
-    .col .tile { width: 100%; }
 
-    #tip {
-      position: fixed; z-index: 200; max-width: 280px; background: #1a1a2e; color: #fff;
-      font-size: 12.5px; line-height: 1.4; padding: 10px 12px; border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0,0,0,.35); display: none;
+    /* ---- popover ---- */
+    #pop {
+      position: fixed; z-index: 200; width: 300px; max-width: calc(100vw - 16px);
+      background: #1a1a2e; color: #fff; font-size: 13px; line-height: 1.4;
+      padding: 12px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.4); display: none;
     }
-    #tip b { display: block; margin-bottom: 4px; }
-    #tip .row { color: #cfd6e6; }
+    #pop b { display: block; margin-bottom: 8px; font-size: 14px; }
+    #pop .urow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    #pop .urow .ulbl { flex: 1; color: #cfd6e6; font-weight: 600; }
+    #pop .urow button {
+      width: 34px; height: 32px; border: none; border-radius: 8px; cursor: pointer;
+      background: rgba(255,255,255,.18); color: #fff; font-size: 17px; font-weight: 700;
+    }
+    #pop .urow .uc { min-width: 22px; text-align: center; font-weight: 700; }
+    #pop .rcv { margin-top: 8px; border-top: 1px solid rgba(255,255,255,.15); padding-top: 6px; }
+    #pop .row { color: #cfd6e6; font-size: 12px; }
     .empty { padding: 40px 16px; text-align: center; color: #6b7280; font-size: 15px; }
   </style>
 </head>
@@ -104,11 +137,12 @@
     <span class="day" id="dayLabel"></span>
     <input type="date" id="datePick">
     <button id="refreshBtn">Refresh</button>
+    <button class="danger" id="resetBtn">Reset day</button>
     <button class="save" id="saveBtn">Save</button>
     <span id="status"></span>
   </div>
   <div id="root"><div class="empty">Loading…</div></div>
-  <div id="tip"></div>
+  <div id="pop"></div>
 
 <script>
 // ===== backend =====
@@ -124,22 +158,43 @@ function call(op, payload) {
 
 // ===== state =====
 // We only plan John's and Randy's FIRST runs; second runs the drivers load themselves.
-var COLS = ['tray', 'front', 'main', 'right'];
-var COL_LABELS = { tray: 'Unplaced racks', front: 'Front of Truck', main: 'Main', right: 'Right' };
+// The truck is a grid: TRUCK_ROWS rows of up to 3 tiles. rows[0] = Front of Truck (nose,
+// last stop), rows[TRUCK_ROWS-1] = rear door (first stop, unloads first).
+// A row holding any wide rack / pallet / bin fits only 2 across; a load bar takes a full row.
+var TRUCK_ROWS = 10;
+var TYPES = ['rack', 'wide', 'pallet', 'bin'];
+var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates' };
+var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', bar: '' };
+
 var serviceDate = '';
-var board = {};      // runKey -> { label, start, customers:{name->{short,color,received}}, cols:{col->[tile]} }
-var runOrder = [];   // ordered runKeys
+var board = {};      // runKey -> { label, start, customers:{name->{short,color,received,units}}, stops:[], tray:[], rows:[[]] }
+var runOrder = [];
 var tileSeq = 0;
-var saveTimer = null;
+var saveTimer = null, stopsTimer = null, stopsDirty = {};
 
 function setStatus(s) { document.getElementById('status').textContent = s || ''; }
-
-// stable color per customer name
 function colorFor(name) {
   var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return 'hsl(' + (h % 360) + ',55%,42%)';
 }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function fmtTime(t) {
+  if (!t) return '';
+  var p = t.split(':'); var h = parseInt(p[0], 10); var ap = h >= 12 ? 'PM' : 'AM';
+  return ((h + 11) % 12) + 1 + ':' + p[1] + ' ' + ap;
+}
+function isSpecial(t) { return t.type === 'wide' || t.type === 'pallet' || t.type === 'bin'; }
 
+// Can `tile` be added to a row already holding rowArr?
+function canDrop(rowArr, tile) {
+  if (tile.type === 'bar') return rowArr.length === 0;
+  for (var i = 0; i < rowArr.length; i++) if (rowArr[i].type === 'bar') return false;
+  var special = isSpecial(tile);
+  for (var j = 0; j < rowArr.length; j++) if (isSpecial(rowArr[j])) special = true;
+  return rowArr.length + 1 <= (special ? 2 : 3);
+}
+
+// ===== load =====
 function load(dateOverride) {
   setStatus('loading…');
   document.getElementById('root').innerHTML = '<div class="empty">Loading…</div>';
@@ -151,130 +206,258 @@ function load(dateOverride) {
     buildBoard(d);
     render();
     setStatus('');
-  }).catch(function (e) {
+  }).catch(function () {
     document.getElementById('root').innerHTML = '<div class="empty">Network error. Tap Refresh.</div>'; setStatus('');
   });
 }
 
+function mkTile(customer, type) { return { id: ++tileSeq, customer: customer, type: type }; }
+
 function buildBoard(d) {
   board = {}; runOrder = [];
-  // first runs only
   var firstRuns = (d.runs || []).filter(function (r) { return /1|first/i.test(r.run); });
   var saved = d.arrangement && d.arrangement.arrangement;
+  var savedV2 = saved && saved.v === 2 && saved.runs;
 
   firstRuns.forEach(function (r) {
     var custs = {};
     r.customers.forEach(function (c) {
-      custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name), received: c.received || [], rackCount: c.rackCount };
+      custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name),
+                        received: c.received || [], units: c.units || { rack: c.rackCount || 0, wide: 0, pallet: 0, bin: 0 } };
     });
-    var cols = { tray: [], front: [], main: [], right: [] };
-    if (saved && saved[r.key]) {
-      // restore placements; tiles for customers no longer scheduled still render
-      COLS.forEach(function (col) {
-        (saved[r.key][col] || []).forEach(function (t) {
-          var nm = t.customer;
-          if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], rackCount: 0 };
-          cols[col].push({ id: ++tileSeq, customer: nm });
+    var tray = [];
+    var rows = []; for (var i = 0; i < TRUCK_ROWS; i++) rows.push([]);
+
+    function ensureCust(nm) {
+      if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], units: { rack: 0, wide: 0, pallet: 0, bin: 0 } };
+    }
+
+    if (savedV2 && saved.runs[r.key]) {
+      var sv = saved.runs[r.key];
+      (sv.tray || []).forEach(function (t) { ensureCust(t.customer); tray.push(mkTile(t.customer, t.type || 'rack')); });
+      (sv.rows || []).forEach(function (rw, ri) {
+        rw.forEach(function (t) {
+          ensureCust(t.customer);
+          var tile = mkTile(t.customer, t.type || 'rack');
+          if (ri < TRUCK_ROWS) rows[ri].push(tile); else tray.push(tile);
         });
       });
     } else {
-      // seed tiles from rack counts into the tray
+      // seed tiles from typed receiving counts into the tray
       r.customers.forEach(function (c) {
-        for (var i = 0; i < (c.rackCount || 0); i++) cols.tray.push({ id: ++tileSeq, customer: c.name });
+        var u = custs[c.name].units;
+        TYPES.forEach(function (ty) { for (var i = 0; i < (u[ty] || 0); i++) tray.push(mkTile(c.name, ty)); });
       });
     }
-    board[r.key] = { label: r.label, start: r.start, customers: custs, cols: cols };
+
+    // stop order: remembered order first (kept only if still known), then anyone new
+    var stops = (r.stops || []).filter(function (nm) { return custs[nm]; });
+    Object.keys(custs).forEach(function (nm) { if (stops.indexOf(nm) === -1) stops.push(nm); });
+
+    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, tray: tray, rows: rows };
     runOrder.push(r.key);
   });
 }
 
 // ===== render =====
-function fmtTime(t) {
-  if (!t) return '';
-  var p = t.split(':'); var h = parseInt(p[0], 10); var ap = h >= 12 ? 'PM' : 'AM';
-  var hh = ((h + 11) % 12) + 1; return hh + ':' + p[1] + ' ' + ap;
-}
-function tileCount(runKey, name) {
-  var n = 0, c = board[runKey].cols;
-  COLS.forEach(function (col) { c[col].forEach(function (t) { if (t.customer === name) n++; }); });
+function tileCountAll(b) {
+  var n = b.tray.length;
+  b.rows.forEach(function (r) { n += r.length; });
   return n;
 }
+function unitSummary(rk, nm) {
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0 }, b = board[rk];
+  function bump(t) { if (t.customer === nm && counts[t.type] != null) counts[t.type]++; }
+  b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
+  var parts = [];
+  if (counts.rack) parts.push(counts.rack + 'R');
+  if (counts.wide) parts.push(counts.wide + 'W');
+  if (counts.pallet) parts.push(counts.pallet + 'P');
+  if (counts.bin) parts.push(counts.bin + 'B');
+  return parts.length ? parts.join(' ') : 'PU';
+}
+
 function render() {
   if (!runOrder.length) { document.getElementById('root').innerHTML = '<div class="empty">No first-run customers scheduled for ' + serviceDate + '.</div>'; return; }
   var html = '<div class="panels">';
   runOrder.forEach(function (rk) {
     var b = board[rk];
-    var total = COLS.reduce(function (s, col) { return s + b.cols[col].length; }, 0);
-    var placed = total - b.cols.tray.length;
+    var total = 0; b.rows.forEach(function (r) { r.forEach(function (t) { if (t.type !== 'bar') total++; }); });
+    var trayN = 0; b.tray.forEach(function (t) { if (t.type !== 'bar') trayN++; });
     html += '<div class="panel">';
     html += '<div class="panel-head"><span class="title">' + esc(b.label) + '</span>'
           + '<span class="start">' + fmtTime(b.start) + '</span>'
-          + '<span class="tot">' + placed + '/' + total + ' racks placed</span></div>';
-    // customer strip
-    html += '<div class="custstrip">';
-    Object.keys(b.customers).sort().forEach(function (nm) {
+          + '<button class="auto" data-run="' + esc(rk) + '">Auto-load</button>'
+          + '<button class="addbar" data-run="' + esc(rk) + '">+ Load bar</button>'
+          + '<span class="tot">' + total + '/' + (total + trayN) + ' placed</span></div>';
+
+    // stop order
+    html += '<div class="stops"><div class="hd">Stop order — 1 unloads first (rear door)</div>';
+    b.stops.forEach(function (nm, i) {
       var cu = b.customers[nm];
-      html += '<span class="chip" style="background:' + cu.color + '">'
-            + '<span class="nm">' + esc(cu.short) + '</span>'
-            + '<button class="stp minus" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">–</button>'
-            + '<span class="ct">' + tileCount(rk, nm) + '</span>'
-            + '<button class="stp plus" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">+</button>'
-            + '</span>';
+      html += '<div class="stoprow">'
+            + '<span class="num">' + (i + 1) + '</span>'
+            + '<span class="snm" style="background:' + cu.color + '" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">' + esc(cu.short) + '</span>'
+            + '<span class="badges">' + unitSummary(rk, nm) + '</span>'
+            + '<button class="mv up" data-run="' + esc(rk) + '" data-i="' + i + '">▲</button>'
+            + '<button class="mv dn" data-run="' + esc(rk) + '" data-i="' + i + '">▼</button>'
+            + '</div>';
     });
-    html += '</div>';
+    html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin, PU=pickup only.</div></div>';
+
     // tray
-    html += colHtml(rk, 'tray');
-    // grid
-    html += '<div class="grid">' + colHtml(rk, 'front') + colHtml(rk, 'main') + colHtml(rk, 'right') + '</div>';
+    html += '<div class="tray" data-run="' + esc(rk) + '" data-col="tray"><span class="lbl">Unplaced</span>';
+    b.tray.forEach(function (t) { html += tileHtml(rk, t, ''); });
+    html += '</div>';
+
+    // truck
+    html += '<div class="truck"><div class="cap">▲ Front of Truck — last stop</div>';
+    b.rows.forEach(function (row, ri) { html += rowHtml(rk, ri); });
+    html += '<div class="cap">▼ Rear Door — first stop, unloads first</div></div>';
+
     html += '</div>';
   });
   html += '</div>';
   document.getElementById('root').innerHTML = html;
   bindTiles();
 }
-function colHtml(rk, col) {
+
+function tileHtml(rk, t, styleExtra) {
   var b = board[rk];
-  var cls = col === 'tray' ? 'tray' : 'col';
-  var h = '<div class="' + cls + '" data-run="' + esc(rk) + '" data-col="' + col + '">'
-        + '<span class="lbl">' + COL_LABELS[col] + '</span>';
-  b.cols[col].forEach(function (t) {
-    var cu = b.customers[t.customer];
-    h += '<div class="tile" data-id="' + t.id + '" data-run="' + esc(rk) + '" style="background:' + cu.color + '">' + esc(cu.short) + '</div>';
+  if (t.type === 'bar') {
+    return '<div class="tile t-bar" data-id="' + t.id + '" data-run="' + esc(rk) + '"' + (styleExtra ? ' style="' + styleExtra + '"' : '') + '>LOAD BAR</div>';
+  }
+  var cu = b.customers[t.customer];
+  var tag = TYPE_TAG[t.type] ? '<span class="ty">' + TYPE_TAG[t.type] + '</span>' : '';
+  return '<div class="tile t-' + t.type + '" data-id="' + t.id + '" data-run="' + esc(rk) + '" style="background:' + cu.color + ';' + (styleExtra || '') + '">' + esc(cu.short) + tag + '</div>';
+}
+
+function rowHtml(rk, ri) {
+  var row = board[rk].rows[ri];
+  // racks/wides render left, pallets & bins flush right (they ride by the door-side wall)
+  var tiles = row.slice().sort(function (a, b) {
+    return ((a.type === 'pallet' || a.type === 'bin') ? 1 : 0) - ((b.type === 'pallet' || b.type === 'bin') ? 1 : 0);
+  });
+  var special = tiles.some(isSpecial);
+  var isBar = tiles.length && tiles[0].type === 'bar';
+  var cap = isBar ? 1 : (special ? 2 : 3);
+  var h = '<div class="trow" data-run="' + esc(rk) + '" data-row="' + ri + '" style="grid-template-columns:repeat(' + cap + ',1fr)">';
+  tiles.forEach(function (t, i) {
+    var col;
+    if (isBar) col = '1';
+    else if (cap === 3) col = (tiles.length === 2 ? (i === 0 ? '1' : '3') : String(i + 1)); // 2 basics: leave the middle open
+    else col = (tiles.length === 1 && t.type === 'wide') ? '1 / span 2' : String(i + 1);
+    // pallets/bins go right-most
+    if (!isBar && (t.type === 'pallet' || t.type === 'bin') && tiles.length < cap) col = String(cap);
+    h += tileHtml(rk, t, 'grid-column:' + col);
   });
   h += '</div>';
   return h;
 }
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
-// ===== count editing =====
-function adj(rk, name, delta) {
-  var cols = board[rk].cols;
-  if (delta > 0) {
-    cols.tray.push({ id: ++tileSeq, customer: name });
-  } else {
-    // remove one: prefer from tray, else from right/main/front
-    var order = ['tray', 'right', 'main', 'front'];
-    for (var i = 0; i < order.length; i++) {
-      var arr = cols[order[i]];
-      for (var j = arr.length - 1; j >= 0; j--) { if (arr[j].customer === name) { arr.splice(j, 1); render(); scheduleSave(); return; } }
-    }
-    return;
-  }
+// ===== auto-load =====
+// Lay the truck out by the rules: first stop at the rear door filling upward, 3 across for
+// basic racks, 2 across when a row holds a wide rack / pallet / bin, pallets & bins first at
+// the door (right side), load bars back to the tray for the crew to place.
+function autoLoad(rk) {
+  var b = board[rk];
+  var all = b.tray.slice();
+  b.rows.forEach(function (r) { r.forEach(function (t) { all.push(t); }); });
+  var bars = all.filter(function (t) { return t.type === 'bar'; });
+  var byCust = {};
+  all.forEach(function (t) {
+    if (t.type === 'bar') return;
+    (byCust[t.customer] = byCust[t.customer] || []).push(t);
+  });
+  var order = b.stops.filter(function (nm) { return byCust[nm]; });
+  Object.keys(byCust).forEach(function (nm) { if (order.indexOf(nm) === -1) order.push(nm); });
+
+  var rows = []; for (var i = 0; i < TRUCK_ROWS; i++) rows.push([]);
+  var tray = bars.slice();
+
+  // pallets & bins: one per row from the door up (render pushes them right)
+  var pr = TRUCK_ROWS - 1;
+  order.forEach(function (nm) {
+    byCust[nm].filter(function (t) { return t.type === 'pallet' || t.type === 'bin'; }).forEach(function (t) {
+      if (pr >= 0) rows[pr--].push(t); else tray.push(t);
+    });
+  });
+
+  // racks & wides: first stop starts at the door and we fill upward, sharing part-full rows
+  var cur = TRUCK_ROWS - 1;
+  order.forEach(function (nm) {
+    var items = byCust[nm].filter(function (t) { return t.type === 'rack' || t.type === 'wide'; });
+    items.sort(function (a, b) { return (a.type === 'wide' ? 0 : 1) - (b.type === 'wide' ? 0 : 1); });
+    items.forEach(function (t) {
+      while (cur >= 0 && !canDrop(rows[cur], t)) cur--;
+      if (cur < 0) { tray.push(t); return; }
+      rows[cur].push(t);
+    });
+  });
+
+  b.rows = rows; b.tray = tray;
   render(); scheduleSave();
 }
 
-// ===== drag (pointer-based: works for mouse + touch/iPad) =====
+// ===== count editing (popover) =====
+var popCtx = null; // {rk, nm}
+function openPop(rk, nm, x, y) {
+  popCtx = { rk: rk, nm: nm };
+  renderPop();
+  var pop = document.getElementById('pop');
+  pop.style.display = 'block';
+  var w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(y + 14, window.innerHeight - h - 8)) + 'px';
+}
+function renderPop() {
+  if (!popCtx) return;
+  var b = board[popCtx.rk], cu = b.customers[popCtx.nm];
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0 };
+  function bump(t) { if (t.customer === popCtx.nm && counts[t.type] != null) counts[t.type]++; }
+  b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
+  var h = '<b>' + esc(popCtx.nm) + '</b>';
+  TYPES.forEach(function (ty) {
+    h += '<div class="urow"><span class="ulbl">' + TYPE_LABEL[ty] + '</span>'
+       + '<button class="pm" data-ty="' + ty + '" data-d="-1">–</button>'
+       + '<span class="uc">' + counts[ty] + '</span>'
+       + '<button class="pm" data-ty="' + ty + '" data-d="1">+</button></div>';
+  });
+  var rows = (cu.received || []).map(function (r) { return '<div class="row">' + esc(r.date) + ' &middot; ' + esc(r.desc) + '</div>'; }).join('');
+  h += '<div class="rcv">' + (rows || '<div class="row">No receiving detail.</div>') + '</div>';
+  document.getElementById('pop').innerHTML = h;
+}
+function closePop() { document.getElementById('pop').style.display = 'none'; popCtx = null; }
+function adjType(rk, nm, ty, delta) {
+  var b = board[rk];
+  if (delta > 0) { b.tray.push(mkTile(nm, ty)); }
+  else {
+    var removed = false;
+    for (var i = b.tray.length - 1; i >= 0 && !removed; i--) {
+      if (b.tray[i].customer === nm && b.tray[i].type === ty) { b.tray.splice(i, 1); removed = true; }
+    }
+    for (var ri = 0; ri < TRUCK_ROWS && !removed; ri++) {
+      var arr = b.rows[ri];
+      for (var j = arr.length - 1; j >= 0 && !removed; j--) {
+        if (arr[j].customer === nm && arr[j].type === ty) { arr.splice(j, 1); removed = true; }
+      }
+    }
+    if (!removed) return;
+  }
+  render(); renderPop(); scheduleSave();
+}
+
+// ===== drag (pointer-based: mouse + touch/iPad) =====
 var drag = null;
 function bindTiles() {
-  var tiles = document.querySelectorAll('.tile');
-  tiles.forEach(function (el) { el.addEventListener('pointerdown', onDown); });
+  document.querySelectorAll('.tile').forEach(function (el) { el.addEventListener('pointerdown', onDown); });
 }
 function findTile(id) {
   for (var ri = 0; ri < runOrder.length; ri++) {
-    var rk = runOrder[ri], cols = board[rk].cols;
-    for (var ci = 0; ci < COLS.length; ci++) {
-      var arr = cols[COLS[ci]];
-      for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return { rk: rk, col: COLS[ci], idx: i, tile: arr[i] };
+    var rk = runOrder[ri], b = board[rk];
+    for (var i = 0; i < b.tray.length; i++) if (b.tray[i].id === id) return { rk: rk, where: 'tray', idx: i, tile: b.tray[i] };
+    for (var r = 0; r < TRUCK_ROWS; r++) {
+      for (var j = 0; j < b.rows[r].length; j++) if (b.rows[r][j].id === id) return { rk: rk, where: r, idx: j, tile: b.rows[r][j] };
     }
   }
   return null;
@@ -285,7 +468,7 @@ function onDown(e) {
   var id = parseInt(el.getAttribute('data-id'), 10);
   var run = el.getAttribute('data-run');
   var startX = e.clientX, startY = e.clientY, started = false;
-  hideTip();
+  closePop();
   el.setPointerCapture(e.pointerId);
   function move(ev) {
     if (!started) {
@@ -300,75 +483,76 @@ function onDown(e) {
   function up(ev) {
     try { el.releasePointerCapture(e.pointerId); } catch (x) {}
     el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
-    if (started) finish(ev.clientX, ev.clientY);
-    else showTipFor(id, run, ev.clientX, ev.clientY);
+    if (started) finish();
+    else { // tap: show the customer editor for this tile's customer
+      var t = findTile(id);
+      if (t && t.tile.type !== 'bar') openPop(run, t.tile.customer, ev.clientX, ev.clientY);
+    }
   }
   el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
 }
 function begin(el, id, run, ev) {
   var r = el.getBoundingClientRect();
-  var g = el.cloneNode(true); g.className = 'tile ghost';
-  g.style.width = r.width + 'px';
+  var g = el.cloneNode(true); g.className = el.className + ' ghost'; g.style.gridColumn = '';
+  g.style.width = Math.min(r.width, 220) + 'px';
   document.body.appendChild(g);
   el.classList.add('dragging');
   drag = { id: id, run: run, ghost: g, dx: ev.clientX - r.left, dy: ev.clientY - r.top, hotEl: null };
 }
 function hot(x, y) {
   var el = document.elementFromPoint(x, y);
-  var col = el && el.closest ? el.closest('.col, .tray') : null;
-  if (col && col.getAttribute('data-run') !== drag.run) col = null;  // tiles stay within their run
-  if (drag.hotEl && drag.hotEl !== col) drag.hotEl.classList.remove('drop-hot');
-  if (col) col.classList.add('drop-hot');
-  drag.hotEl = col;
+  var target = el && el.closest ? el.closest('.trow, .tray') : null;
+  if (target && target.getAttribute('data-run') !== drag.run) target = null; // stay within the run
+  if (drag.hotEl && drag.hotEl !== target) drag.hotEl.classList.remove('drop-hot');
+  if (target) target.classList.add('drop-hot');
+  drag.hotEl = target;
 }
-function finish(x, y) {
+function finish() {
   var src = findTile(drag.id);
   var target = drag.hotEl;
+  var ok = false;
   if (src && target) {
-    var col = target.getAttribute('data-col');
-    var idx = insertIndex(target, y);
-    // remove from source
-    board[src.rk].cols[src.col].splice(src.idx, 1);
-    // adjust idx if same column and removing earlier shifts
-    var destArr = board[src.rk].cols[col];
-    if (src.col === col && src.idx < idx) idx--;
-    destArr.splice(Math.min(idx, destArr.length), 0, src.tile);
+    var b = board[src.rk];
+    if (target.classList.contains('tray')) {
+      removeAt(b, src);
+      b.tray.push(src.tile);
+      ok = true;
+    } else {
+      var ri = parseInt(target.getAttribute('data-row'), 10);
+      var rowArr = b.rows[ri];
+      var sameRow = (src.where === ri);
+      var check = sameRow ? rowArr.filter(function (t) { return t.id !== src.tile.id; }) : rowArr;
+      if (canDrop(check, src.tile)) {
+        removeAt(b, src);
+        b.rows[ri].push(src.tile);
+        ok = true;
+      } else {
+        target.classList.add('reject');
+        (function (tEl) { setTimeout(function () { tEl.classList.remove('reject'); }, 450); })(target);
+      }
+    }
   }
   if (drag.hotEl) drag.hotEl.classList.remove('drop-hot');
   if (drag.ghost) drag.ghost.remove();
   drag = null;
-  render(); scheduleSave();
+  render();
+  if (ok) scheduleSave();
 }
-function insertIndex(colEl, y) {
-  var tiles = colEl.querySelectorAll('.tile:not(.dragging)');
-  for (var i = 0; i < tiles.length; i++) {
-    var r = tiles[i].getBoundingClientRect();
-    if (y < r.top + r.height / 2) return i;
-  }
-  return tiles.length;
+function removeAt(b, src) {
+  if (src.where === 'tray') b.tray.splice(src.idx, 1);
+  else b.rows[src.where].splice(src.idx, 1);
 }
-
-// ===== tap detail =====
-function showTipFor(id, run, x, y) {
-  var t = findTile(id); if (!t) return;
-  var cu = board[run].customers[t.tile.customer];
-  var tip = document.getElementById('tip');
-  var rows = (cu.received || []).map(function (r) { return '<div class="row">' + esc(r.date) + ' &middot; ' + esc(r.desc) + '</div>'; }).join('');
-  tip.innerHTML = '<b>' + esc(t.tile.customer) + '</b>' + (rows || '<div class="row">No receiving detail.</div>');
-  tip.style.display = 'block';
-  var w = tip.offsetWidth, h = tip.offsetHeight;
-  tip.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
-  tip.style.top = Math.max(8, (y - h - 12 > 8 ? y - h - 12 : y + 16)) + 'px';
-}
-function hideTip() { document.getElementById('tip').style.display = 'none'; }
-document.addEventListener('pointerdown', function (e) { if (!e.target.closest || !e.target.closest('.tile')) hideTip(); }, true);
 
 // ===== save =====
+function slim(t) { return { customer: t.customer, type: t.type }; }
 function arrangement() {
-  var out = {};
+  var out = { v: 2, runs: {} };
   runOrder.forEach(function (rk) {
-    var o = {}; COLS.forEach(function (col) { o[col] = board[rk].cols[col].map(function (t) { return { customer: t.customer }; }); });
-    out[rk] = o;
+    var b = board[rk];
+    out.runs[rk] = {
+      tray: b.tray.map(slim),
+      rows: b.rows.map(function (r) { return r.map(slim); })
+    };
   });
   return out;
 }
@@ -379,17 +563,60 @@ function doSave() {
     setStatus(d && d.ok ? 'saved ✓' : 'save failed');
   }).catch(function () { setStatus('save failed'); });
 }
+function scheduleStopsSave(rk) {
+  stopsDirty[rk] = true;
+  clearTimeout(stopsTimer);
+  stopsTimer = setTimeout(function () {
+    Object.keys(stopsDirty).forEach(function (k) {
+      call('saveStops', { runKey: k, stops: board[k].stops });
+    });
+    stopsDirty = {};
+  }, 1000);
+}
 
 // ===== events =====
 document.getElementById('saveBtn').addEventListener('click', doSave);
 document.getElementById('refreshBtn').addEventListener('click', function () { load(document.getElementById('datePick').value || null); });
 document.getElementById('datePick').addEventListener('change', function () { load(this.value); });
-// delegated +/- count buttons (survives innerHTML re-renders since #root is not replaced)
-document.getElementById('root').addEventListener('click', function (e) {
-  var b = e.target.closest ? e.target.closest('.stp') : null;
-  if (!b) return;
-  adj(b.getAttribute('data-run'), b.getAttribute('data-nm'), b.classList.contains('plus') ? 1 : -1);
+document.getElementById('resetBtn').addEventListener('click', function () {
+  if (!confirm('Clear the saved layout for ' + serviceDate + ' and start over from today’s receiving counts?')) return;
+  setStatus('clearing…');
+  call('clear', { serviceDate: serviceDate }).then(function () { load(serviceDate); });
 });
+
+document.getElementById('root').addEventListener('click', function (e) {
+  var t = e.target;
+  var auto = t.closest ? t.closest('.auto') : null;
+  if (auto) { autoLoad(auto.getAttribute('data-run')); return; }
+  var addbar = t.closest ? t.closest('.addbar') : null;
+  if (addbar) {
+    var rk = addbar.getAttribute('data-run');
+    board[rk].tray.push(mkTile('', 'bar'));
+    render(); scheduleSave(); return;
+  }
+  var mv = t.closest ? t.closest('.mv') : null;
+  if (mv) {
+    var rk2 = mv.getAttribute('data-run'), i = parseInt(mv.getAttribute('data-i'), 10);
+    var stops = board[rk2].stops;
+    var j = mv.classList.contains('up') ? i - 1 : i + 1;
+    if (j >= 0 && j < stops.length) {
+      var tmp = stops[i]; stops[i] = stops[j]; stops[j] = tmp;
+      render(); scheduleStopsSave(rk2);
+    }
+    return;
+  }
+  var snm = t.closest ? t.closest('.snm') : null;
+  if (snm) { openPop(snm.getAttribute('data-run'), snm.getAttribute('data-nm'), e.clientX, e.clientY); return; }
+});
+
+document.getElementById('pop').addEventListener('click', function (e) {
+  var pm = e.target.closest ? e.target.closest('.pm') : null;
+  if (pm && popCtx) adjType(popCtx.rk, popCtx.nm, pm.getAttribute('data-ty'), parseInt(pm.getAttribute('data-d'), 10));
+});
+document.addEventListener('pointerdown', function (e) {
+  if (!e.target.closest) return;
+  if (!e.target.closest('#pop') && !e.target.closest('.snm') && !e.target.closest('.tile')) closePop();
+}, true);
 
 load();
 </script>
