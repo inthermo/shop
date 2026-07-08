@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Ask Inthermo</title>
+<style>
+  :root{ --b:#1565c0; --bg:#f4f6f8; --line:#d8dee4; --ink:#1a1a1a; --mut:#607089; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink);
+    display:flex; flex-direction:column; }
+  header{ background:var(--b); color:#fff; padding:16px 18px; flex:none; }
+  header h1{ margin:0; font-size:21px; } header p{ margin:4px 0 0; opacity:.9; font-size:13px; }
+  .feed{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; }
+  .wrap{ max-width:760px; margin:0 auto; }
+  .msg{ margin-bottom:16px; }
+  .q{ text-align:right; }
+  .q span{ display:inline-block; background:var(--b); color:#fff; padding:10px 14px; border-radius:16px 16px 4px 16px;
+    font-size:16px; max-width:85%; }
+  .a{ background:#fff; border:1px solid var(--line); border-radius:4px 16px 16px 16px; padding:14px 16px;
+    font-size:17px; line-height:1.45; }
+  .a.err{ color:#b00020; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; margin-top:14px; }
+  .card{ display:block; text-decoration:none; color:inherit; background:#fff; border:1px solid var(--line);
+    border-radius:12px; overflow:hidden; }
+  .card:active{ background:#eef4fc; }
+  .card .thumb{ width:100%; height:120px; object-fit:cover; background:#eceff3; display:block; }
+  .card .noimg{ height:120px; display:flex; align-items:center; justify-content:center; font-size:34px; background:#eceff3; }
+  .card .cap{ padding:8px 10px; font-size:12px; color:var(--mut); word-break:break-word; }
+  .think{ color:var(--mut); font-size:15px; }
+  .dot{ animation:blink 1.2s infinite; } .dot:nth-child(2){ animation-delay:.2s; } .dot:nth-child(3){ animation-delay:.4s; }
+  @keyframes blink{ 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  .bar{ flex:none; background:#fff; border-top:1px solid var(--line); padding:12px; }
+  .bar .row{ max-width:760px; margin:0 auto; display:flex; gap:8px; align-items:center; }
+  #q{ flex:1; font-size:17px; padding:13px 15px; border:1px solid var(--line); border-radius:24px; outline:none; }
+  #q:focus{ border-color:var(--b); }
+  button.ico{ flex:none; width:48px; height:48px; border-radius:50%; border:none; color:#fff; font-size:20px; }
+  #mic{ background:#5a6b82; } #mic.on{ background:#d32f2f; }
+  #send{ background:var(--b); }
+  button:disabled{ opacity:.5; }
+  .hint{ text-align:center; color:var(--mut); font-size:14px; margin-top:40px; }
+  .hint b{ color:var(--ink); } .chip{ display:inline-block; background:#fff; border:1px solid var(--line);
+    border-radius:16px; padding:8px 13px; margin:5px 4px; font-size:14px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔎 Ask Inthermo</h1>
+  <p>Drawings &amp; shop questions — type or tap the mic</p>
+</header>
+
+<div class="feed" id="feed">
+  <div class="wrap">
+    <div class="hint" id="hint">
+      <b>Ask about a part or the shop.</b><br>
+      <div style="margin-top:14px">
+        <span class="chip">What does the Dalsin panel look like?</span>
+        <span class="chip">How big is our oven?</span>
+        <span class="chip">Basket dimensions?</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bar">
+  <div class="row">
+    <button class="ico" id="mic" title="Speak">🎤</button>
+    <input id="q" placeholder="Ask about a part or the shop…" autocomplete="off"
+           enterkeyhint="send" inputmode="text">
+    <button class="ico" id="send" title="Send">➤</button>
+  </div>
+</div>
+
+<script>
+var BACKEND_URL = 'https://script.google.com/macros/s/AKfycby-Or47D7cvZb3t1IeGzXXDpKjVZ1Eg2_pcHmjxrBq9qqj4W6ST7y5OEZLcNg1KEm2Kcw/exec';
+var feed = document.getElementById('feed').firstElementChild;
+var input = document.getElementById('q');
+var busy = false;
+
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function el(html){ var d=document.createElement('div'); d.innerHTML=html; return d.firstElementChild; }
+function scroll(){ var f=document.getElementById('feed'); f.scrollTop=f.scrollHeight; }
+
+function addQ(text){
+  var h=document.getElementById('hint'); if(h) h.remove();
+  feed.appendChild(el('<div class="msg q"><span>'+esc(text)+'</span></div>'));
+  scroll();
+}
+function addThinking(){
+  var n=el('<div class="msg"><div class="a think"><span class="dot">●</span><span class="dot">●</span><span class="dot">●</span></div></div>');
+  feed.appendChild(n); scroll(); return n;
+}
+function cardHtml(s){
+  var inner = s.thumb
+    ? '<img class="thumb" src="'+esc(s.thumb)+'" loading="lazy" onerror="this.outerHTML=\'<div class=noimg>📄</div>\'">'
+    : '<div class="noimg">'+(s.isImage?'🖼️':'📄')+'</div>';
+  return '<a class="card" href="'+esc(s.driveLink)+'" target="_blank" rel="noopener">'+inner+
+         '<div class="cap">'+esc(s.title)+'</div></a>';
+}
+function render(node, j){
+  var cards = (j.sources&&j.sources.length)
+    ? '<div class="cards">'+j.sources.map(cardHtml).join('')+'</div>' : '';
+  node.innerHTML = '<div class="a">'+esc(j.answer||'')+cards+'</div>';
+  scroll();
+}
+
+function ask(text){
+  text=(text||'').trim(); if(!text||busy) return;
+  busy=true; document.getElementById('send').disabled=true;
+  addQ(text); input.value='';
+  var node=addThinking();
+  fetch(BACKEND_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op:'ask', q:text }),
+    redirect:'follow'
+  }).then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j && j.ok===false){ node.innerHTML='<div class="a err">'+esc(j.error||'Something went wrong.')+'</div>'; scroll(); }
+      else render(node, j);
+    })
+    .catch(function(e){ node.innerHTML='<div class="a err">Network error — try again.</div>'; scroll(); })
+    .then(function(){ busy=false; document.getElementById('send').disabled=false; input.focus(); });
+}
+
+document.getElementById('send').onclick=function(){ ask(input.value); };
+input.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); ask(input.value); } });
+document.addEventListener('click',function(e){ if(e.target.classList.contains('chip')) ask(e.target.textContent); });
+
+// ---- Voice (Web Speech API; graceful no-op where unsupported, e.g. some iPads) ----
+(function(){
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var mic = document.getElementById('mic');
+  if(!SR){ mic.style.display='none'; return; }
+  var rec = new SR(); rec.lang='en-US'; rec.interimResults=false; rec.maxAlternatives=1;
+  var on=false;
+  mic.onclick=function(){ if(on){ rec.stop(); return; } try{ rec.start(); }catch(e){} };
+  rec.onstart=function(){ on=true; mic.classList.add('on'); };
+  rec.onend=function(){ on=false; mic.classList.remove('on'); };
+  rec.onresult=function(e){ var t=e.results[0][0].transcript; input.value=t; ask(t); };
+})();
+</script>
+</body>
+</html>
