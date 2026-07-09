@@ -890,6 +890,12 @@ function noteRequiresPo(noteText) {
   return /\bp\.?\s?o\.?\b|purchase order/i.test(noteText || '');
 }
 
+// A note saying the PO is already on file (e.g. "PO already on file.") means
+// no PO is needed from the paperwork — the field stays Optional.
+function notePoOnFile(noteText) {
+  return /on\s?file/i.test(noteText || '');
+}
+
 // Some customers never send a real PO — their note tells us to write
 // "Verbal MMDDYY" as the PO (e.g. ICS). For those, auto-fill the PO instead
 // of forcing a manual entry.
@@ -1222,6 +1228,12 @@ function selectCustomer(name) {
     poIsRequired = false;
     poInputEl.value = 'Verbal ' + todayMMDDYY();
     poInputEl.placeholder = 'Optional';
+    poInputEl.classList.remove('po-required');
+    poLabelEl.textContent = 'PO / Reference number';
+  } else if (notePoOnFile(noteText)) {
+    poIsRequired = false;
+    poInputEl.value = '';
+    poInputEl.placeholder = 'Optional — PO on file';
     poInputEl.classList.remove('po-required');
     poLabelEl.textContent = 'PO / Reference number';
   } else if (noteRequiresPo(noteText)) {
