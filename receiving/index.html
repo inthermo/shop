@@ -1087,7 +1087,33 @@ function stopLogAutoRefresh() {
 
 document.addEventListener('visibilitychange', function () {
   if (!document.hidden && document.getElementById('page-log').classList.contains('active')) loadLog(true);
+  if (!document.hidden && Date.now() - _ORDERS_LAST > 240000) refreshOpenOrders();
 });
+
+// Keep the open-order suggestions fresh without a page reload. The iPad keeps this
+// page open all day, but _ALL_ORDERS was only fetched at load — SOs entered after
+// that never appeared until someone reloaded (Standard Iron, 2026-07-09). A silent
+// bootstrap re-fetch every 10 min (plus on tab wake, throttled to 4 min) swaps in
+// fresh data. refresh:1 busts the server-side ri_orders cache so "fresh" means the
+// latest TrackerWriter push, not an up-to-30-min-old cached copy.
+var _ORDERS_LAST = Date.now();
+function refreshOpenOrders() {
+  if (document.hidden) return;
+  _ORDERS_LAST = Date.now();
+  call('bootstrap', { refresh: 1 }).then(function (res) {
+    if (!res || !res.ok) return;
+    try { localStorage.setItem(LS_BOOT_KEY, JSON.stringify(res)); } catch (e) {}
+    _ALL_ORDERS = res.orders || {};
+    if (res.parts) _PARTS = res.parts;
+    // Re-render the order buttons only when it can't disturb a worker mid-entry:
+    // a customer is on screen but nothing is selected, typed, or filled yet.
+    if (selectedCust && !selectedOrderIdxs.length && !itemRows.length
+        && !document.getElementById('poInput').value) {
+      loadOpenOrders(selectedCust.name);
+    }
+  }).catch(function () {});
+}
+setInterval(refreshOpenOrders, 600000);
 
 // =====================================================================
 // CUSTOMER SEARCH
