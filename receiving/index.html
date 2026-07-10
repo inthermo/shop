@@ -464,6 +464,7 @@
     .log-col-customer { font-weight: 700; color: #1a1a2e; width: 20%; }
     .log-col-po { color: #6b7280; width: 14%; white-space: nowrap; }
     .log-col-items { color: #374151; }
+    .log-col-notes { color: #92400e; font-style: italic; width: 18%; }
     .log-done { color: #22c55e; font-weight: 700; }
     .log-table tr.day-start td { border-top: 2px solid #e5e7eb; }
     @keyframes logFlash { 0% { background: #fde68a; } 100% { background: transparent; } }
@@ -1694,6 +1695,7 @@ function renderLog(result) {
       + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
       + '<td class="log-col-po">' + po + '</td>'
       + '<td class="log-col-items">' + esc(e.description) + '</td>'
+      + '<td class="log-col-notes">' + (e.note ? esc(e.note) : '') + '</td>'
       + '</tr>';
   }).join('');
   document.getElementById('logContent').innerHTML =
@@ -1703,6 +1705,7 @@ function renderLog(result) {
     + '<th class="log-col-customer">Customer</th>'
     + '<th class="log-col-po">PO</th>'
     + '<th class="log-col-items">Items</th>'
+    + '<th class="log-col-notes">Notes</th>'
     + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
     + '<div id="logNoMatch" class="log-empty" style="display:none">No entries match the filter.</div>';
   applyLogFilter();
