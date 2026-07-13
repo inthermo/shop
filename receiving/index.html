@@ -418,6 +418,44 @@
     }
     .toast.visible { opacity: 1; }
 
+    /* ---- OPEN-ORDER CONFIRM MODAL ---- */
+    .oo-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 150;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .oo-overlay.visible { display: flex; }
+    .oo-box {
+      background: #fff;
+      border-radius: 14px;
+      max-width: 440px;
+      width: 100%;
+      padding: 26px 24px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+    .oo-box h3 { font-size: 20px; margin-bottom: 10px; }
+    .oo-box p { font-size: 16px; color: #4b5563; line-height: 1.45; margin-bottom: 20px; }
+    .oo-btn {
+      width: 100%;
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .oo-btn.oo-yes { background: #fff; color: #b91c1c; border: 2px solid #e63946; }
+    .oo-btn.oo-yes:active { background: #fee2e2; }
+    .oo-btn.oo-cancel { background: #2563eb; color: #fff; }
+    .oo-btn.oo-cancel:active { background: #1d4ed8; }
+
     /* ---- LOG ---- */
     .log-date-header {
       font-size: 14px;
@@ -857,6 +895,15 @@
 <button class="fab" id="fab" onclick="switchTab('intake')" title="New receiving entry">+</button>
 
 <div class="toast" id="toast"></div>
+
+<div class="oo-overlay" id="ooOverlay">
+  <div class="oo-box">
+    <h3>⚠️ Open order on file</h3>
+    <p>This customer has an open purchase order listed above.<br>Are you sure you don't want to use the open order for this submission?</p>
+    <button class="oo-btn oo-cancel" onclick="ooCancel()">Cancel and go back</button>
+    <button class="oo-btn oo-yes" onclick="ooYes()">Yes, create new purchase order</button>
+  </div>
+</div>
 
 <script>
 // =====================================================================
@@ -1537,8 +1584,14 @@ function updateFromSelectedOrders() {
 // =====================================================================
 // SUBMIT
 // =====================================================================
-function onSubmit() {
+function onSubmit(skipOpenOrderCheck) {
   if (!selectedCust) { showToast('Select a customer first', 3000); return; }
+
+  // Open orders shown but none selected → confirm before creating a new PO
+  if (!skipOpenOrderCheck && openOrders.length && !selectedOrderIdxs.length) {
+    document.getElementById('ooOverlay').classList.add('visible');
+    return;
+  }
 
   // Multi-order: submit one entry per selected order using that order's items
   if (selectedOrderIdxs.length > 1) {
@@ -1577,6 +1630,17 @@ function onSubmit() {
       btn.disabled = false; btn.textContent = 'Submit';
       showToast('Error: ' + e.message, 5000);
     });
+}
+
+function ooCancel() {
+  document.getElementById('ooOverlay').classList.remove('visible');
+  var section = document.getElementById('openOrdersSection');
+  if (section) section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function ooYes() {
+  document.getElementById('ooOverlay').classList.remove('visible');
+  onSubmit(true);
 }
 
 function submitMultipleOrders() {
