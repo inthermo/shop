@@ -931,6 +931,9 @@ function call(op, payload) {
 // =====================================================================
 // STATE
 // =====================================================================
+// Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
+// compares this stamp, and force-reloads the iPad's cached copy when it changed.
+var APP_VERSION = '2026-07-14a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -1033,6 +1036,7 @@ function applyBootstrap(res) {
 
 window.addEventListener('load', function () {
   if (location.search.indexOf('selftest') !== -1) { runSelfTest(); return; }
+  checkAppUpdate(); // reload immediately if the bookmark opened a stale cached copy
 
   // Stale-while-revalidate: paint INSTANTLY from the last visit's bootstrap
   // (the iPad reloads this page many times a day; every load used to block the
@@ -1142,9 +1146,36 @@ function stopLogAutoRefresh() {
   if (_LOG_TIMER) { clearInterval(_LOG_TIMER); _LOG_TIMER = null; }
 }
 
+// ---------------------------------------------------------------------
+// AUTO-UPDATE — the iPad home-screen bookmark caches this page with no way to
+// hard-refresh, so the page updates itself: fetch our own HTML bypassing the
+// cache, compare APP_VERSION, and reload with a cache-busting query when a new
+// deploy is live. Never reloads mid-entry (customer selected or camera open) —
+// it retries on the next refocus / 15-min tick instead.
+var _PENDING_VER = null;
+function checkAppUpdate() {
+  fetch(location.pathname, { cache: 'no-store' })
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      var m = html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+      if (m && m[1] !== APP_VERSION) { _PENDING_VER = m[1]; applyPendingUpdate(); }
+    }).catch(function () {});
+}
+function applyPendingUpdate() {
+  if (!_PENDING_VER) return;
+  if (selectedCust) return;                                                     // mid-entry
+  if (document.getElementById('camOverlay').classList.contains('open')) return; // camera up
+  var last = +(sessionStorage.getItem('riUpdAt') || 0);
+  if (Date.now() - last < 300000) return; // at most one auto-reload per 5 min (loop guard)
+  sessionStorage.setItem('riUpdAt', String(Date.now()));
+  location.replace(location.pathname + '?v=' + encodeURIComponent(_PENDING_VER));
+}
+setInterval(function () { if (!document.hidden) { if (_PENDING_VER) applyPendingUpdate(); else checkAppUpdate(); } }, 900000);
+
 document.addEventListener('visibilitychange', function () {
   if (!document.hidden && document.getElementById('page-log').classList.contains('active')) loadLog(true);
   if (!document.hidden && Date.now() - _ORDERS_LAST > 240000) refreshOpenOrders();
+  if (!document.hidden) { if (_PENDING_VER) applyPendingUpdate(); else checkAppUpdate(); }
 });
 
 // Keep the open-order suggestions fresh without a page reload. The iPad keeps this
