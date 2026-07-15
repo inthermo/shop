@@ -380,6 +380,7 @@
 
     /* ---- FREEFORM CUSTOMER OPTION ---- */
     .dropdown-freeform { color: #6b7280; font-style: italic; }
+    .dropdown-addcust { color: #1d4ed8; font-weight: 600; }
 
     /* ---- SUBMIT ---- */
     .submit-btn {
@@ -908,6 +909,15 @@
   </div>
 </div>
 
+<div class="oo-overlay" id="addCustOverlay">
+  <div class="oo-box">
+    <h3>&#10133; Add new customer</h3>
+    <p>Save &ldquo;<span id="addCustName"></span>&rdquo; to the customer list?<br><b>Double-check the spelling</b> — this adds them for everyone.</p>
+    <button class="oo-btn oo-cancel" onclick="addCustCancel()">Cancel</button>
+    <button class="oo-btn oo-yes" id="addCustYesBtn" onclick="addCustConfirm()">Yes, add customer</button>
+  </div>
+</div>
+
 <script>
 // =====================================================================
 // BACKEND — Apps Script "Receiving Intake" web app, called as a JSON API.
@@ -933,7 +943,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-14a';
+var APP_VERSION = '2026-07-15a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -1218,7 +1228,8 @@ function onSearchInput(val) {
   if (!matches.length) {
     var trimmed = val.trim();
     var escapedVal = JSON.stringify(trimmed).replace(/"/g, '&quot;');
-    dd.innerHTML = '<div class="dropdown-item dropdown-freeform" onclick="selectCustomer(' + escapedVal + ')">Use &ldquo;' + esc(trimmed) + '&rdquo;</div>';
+    dd.innerHTML = '<div class="dropdown-item dropdown-freeform" onclick="selectCustomer(' + escapedVal + ')">Use &ldquo;' + esc(trimmed) + '&rdquo; once</div>'
+      + '<div class="dropdown-item dropdown-addcust" onclick="askAddCustomer(' + escapedVal + ')">&#10133; Add &ldquo;' + esc(trimmed) + '&rdquo; as new customer</div>';
   } else {
     dd.innerHTML = matches.map(function (c) {
       return '<div class="dropdown-item" onclick="selectCustomer(' + JSON.stringify(c.name).replace(/"/g, '&quot;') + ')">'
@@ -1231,6 +1242,47 @@ function onSearchInput(val) {
 function onSearchFocus() {
   var val = document.getElementById('customerInput').value;
   if (val.trim()) onSearchInput(val);
+}
+
+// ---- Add-new-customer flow (no-match dropdown → confirm → backend addCustomer) ----
+var pendingAddCust = '';
+
+function askAddCustomer(name) {
+  pendingAddCust = name;
+  document.getElementById('dropdown').classList.remove('open');
+  document.getElementById('addCustName').textContent = name;
+  document.getElementById('addCustOverlay').classList.add('visible');
+}
+
+function addCustCancel() {
+  pendingAddCust = '';
+  document.getElementById('addCustOverlay').classList.remove('visible');
+}
+
+function addCustConfirm() {
+  var name = pendingAddCust;
+  if (!name) return addCustCancel();
+  var btn = document.getElementById('addCustYesBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  call('addCustomer', { name: name }).then(function (result) {
+    btn.disabled = false; btn.textContent = 'Yes, add customer';
+    document.getElementById('addCustOverlay').classList.remove('visible');
+    pendingAddCust = '';
+    if (!result || !result.ok) {
+      showToast('Could not add customer: ' + ((result && result.error) || 'network error'), 6000);
+      return;
+    }
+    if (result.existing) {
+      // Normalized match on an existing row — use the canonical name instead of
+      // creating a variant that would shadow the real row downstream.
+      showToast('Already in the list as “' + result.existing + '” — selected it', 5000);
+      selectCustomer(result.existing);
+      return;
+    }
+    allCustomers.push({ name: result.name, aliases: [result.name], items: [], staffNote: '' });
+    showToast('✓ Added “' + result.name + '” to the customer list', 4000);
+    selectCustomer(result.name);
+  });
 }
 
 function selectCustomer(name) {
