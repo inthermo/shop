@@ -675,7 +675,9 @@
       height: 68vh;
       max-width: 96vw;
       aspect-ratio: 3 / 4;
-      object-fit: contain;
+      /* cover (not contain): a landscape stream must FILL the portrait box, and
+         captureFromCamera crops the saved photo to this same visible 3:4 region. */
+      object-fit: cover;
       display: block;
       background: #111;
     }
@@ -943,7 +945,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-16a';
+var APP_VERSION = '2026-07-16b';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -1944,7 +1946,8 @@ function triggerPoCamera() {
   errDiv.textContent = '';
   overlay.classList.add('open');
 
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  // ideal 4:3 hi-res so the portrait center-crop keeps enough pixels for OCR
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 2592 }, height: { ideal: 1936 } } })
     .then(function(stream) {
       _camStream = stream;
       var vid = document.getElementById('camVideo');
@@ -1982,17 +1985,23 @@ function closeCamera() {
 function captureFromCamera() {
   var vid = document.getElementById('camVideo');
   if (!vid.videoWidth) return;
+  var w = vid.videoWidth, h = vid.videoHeight;
+  // Center-crop to the 3:4 portrait region the object-fit:cover preview shows,
+  // so the saved photo is always portrait and matches what the worker saw.
+  var AR = 3 / 4;
+  var cropW = w, cropH = h;
+  if (w / h > AR) { cropW = Math.round(h * AR); } else { cropH = Math.round(w / AR); }
+  var sx = Math.round((w - cropW) / 2), sy = Math.round((h - cropH) / 2);
   var canvas = document.createElement('canvas');
   var MAX = 1800;
-  var w = vid.videoWidth, h = vid.videoHeight;
-  if (w > MAX || h > MAX) {
-    var scale = MAX / Math.max(w, h);
-    canvas.width  = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-  } else {
-    canvas.width = w; canvas.height = h;
+  var outW = cropW, outH = cropH;
+  if (outW > MAX || outH > MAX) {
+    var scale = MAX / Math.max(outW, outH);
+    outW = Math.round(outW * scale);
+    outH = Math.round(outH * scale);
   }
-  canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+  canvas.width = outW; canvas.height = outH;
+  canvas.getContext('2d').drawImage(vid, sx, sy, cropW, cropH, 0, 0, outW, outH);
   closeCamera();
   processImageDataUrl(canvas.toDataURL('image/jpeg', 0.88));
 }
