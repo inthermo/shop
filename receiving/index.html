@@ -943,7 +943,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-15a';
+var APP_VERSION = '2026-07-16a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -954,10 +954,11 @@ function noteRequiresPo(noteText) {
   return /\bp\.?\s?o\.?\b|purchase order/i.test(noteText || '');
 }
 
-// A note saying the PO is already on file (e.g. "PO already on file.") means
-// no PO is needed from the paperwork — the field stays Optional.
+// A note saying the PO is already on file or autopopulates (e.g. "PO already
+// on file.", "PO autopopulates.") means no PO is needed from the paperwork —
+// the field stays Optional.
 function notePoOnFile(noteText) {
-  return /on\s?file/i.test(noteText || '');
+  return /on\s?file|auto[\s-]?populat/i.test(noteText || '');
 }
 
 // Some customers never send a real PO — their note tells us to write
