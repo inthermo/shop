@@ -971,6 +971,12 @@ function noteWantsVerbalPo(noteText) {
   return /verbal/i.test(t) && (/mmddyy/i.test(t) || /\bp\.?\s?o\.?\b|purchase order/i.test(t));
 }
 
+// A note containing "MMDDYY" without "verbal" (e.g. Wenger: "PO = today's
+// date MMDDYY") means the PO is just today's date — auto-fill it bare.
+function noteWantsDatePo(noteText) {
+  return /mmddyy/i.test(noteText || '');
+}
+
 // Today's date as MMDDYY, e.g. 070726.
 function todayMMDDYY() {
   var d = new Date();
@@ -1364,6 +1370,13 @@ function selectCustomer(name) {
     // No real PO — auto-fill "Verbal MMDDYY" and leave it editable, not required.
     poIsRequired = false;
     poInputEl.value = 'Verbal ' + todayMMDDYY();
+    poInputEl.placeholder = 'Optional';
+    poInputEl.classList.remove('po-required');
+    poLabelEl.textContent = 'PO / Reference number';
+  } else if (noteWantsDatePo(noteText)) {
+    // PO is today's date — pre-fill the real value, editable, not required.
+    poIsRequired = false;
+    poInputEl.value = todayMMDDYY();
     poInputEl.placeholder = 'Optional';
     poInputEl.classList.remove('po-required');
     poLabelEl.textContent = 'PO / Reference number';
