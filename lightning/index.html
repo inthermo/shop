@@ -183,9 +183,10 @@ async function loadRadar() {
     const j = await res.json();
     const frames = [...j.radar.past, ...j.radar.nowcast.map(f => Object.assign({}, f, { forecast: true }))];
     radarGroup.clearLayers();
+    // Native tiles stop at z7 ("Zoom Level Not Supported" beyond) — serve 512px and upscale.
     radarLayers = frames.map(f => L.tileLayer(
-      j.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png",
-      { opacity: 0, maxZoom: 19, zIndex: 5 }
+      j.host + f.path + "/512/{z}/{x}/{y}/2/1_1.png",
+      { opacity: 0, tileSize: 512, zoomOffset: -1, maxNativeZoom: 8, maxZoom: 19, zIndex: 5 }
     ).addTo(radarGroup));
     radarFrames = frames;
     showRadarFrame(j.radar.past.length - 1); // start on the latest real frame
