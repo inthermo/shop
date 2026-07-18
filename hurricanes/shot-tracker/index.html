@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Shot Tracker — Canes Central</title>
+<link rel="icon" href="https://a.espncdn.com/i/teamlogos/nhl/500/car.png">
+<style>
+  :root {
+    --red: #CE1126; --bg: #0d0f12; --card: #16191e; --card2: #1c2026;
+    --line: #262b33; --ink: #f2f4f7; --ink2: #aab2bd; --ink3: #6b7480; --good: #4caf7d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 12px 40px; }
+  header { border-bottom: 3px solid var(--red); padding: 14px 12px; display: flex; align-items: center; gap: 12px; }
+  header img { width: 40px; height: 40px; }
+  header .back { color: var(--ink3); font-size: .8rem; text-decoration: none; }
+  h1 { font-size: 1.15rem; }
+  .tagline { color: var(--red); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+
+  .stage { position: relative; margin-top: 14px; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid var(--line); }
+  video { display: none; }
+  #view { display: block; width: 100%; touch-action: none; }
+  .stage .msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--ink2); text-align: center; padding: 20px; font-size: .95rem; background: var(--card);
+  }
+  .banner {
+    position: absolute; left: 0; right: 0; top: 0; padding: 8px 12px; text-align: center;
+    font-weight: 800; font-size: 1.05rem; background: rgba(13,15,18,.75); display: none;
+  }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  button, .filebtn {
+    background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; font-size: .9rem; cursor: pointer; font-family: inherit;
+  }
+  button.primary { background: var(--red); border-color: var(--red); font-weight: 800; }
+  button.on { background: var(--red); border-color: var(--red); font-weight: 700; }
+  button:disabled { opacity: .4; }
+  .grow { flex: 1; }
+  label.slider { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: .82rem; }
+  input[type=range] { accent-color: var(--red); width: 110px; }
+
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 14px; }
+  h2 { font-size: .85rem; text-transform: uppercase; letter-spacing: 1.5px; border-left: 4px solid var(--red); padding-left: 8px; margin-bottom: 10px; }
+  .hint { color: var(--ink3); font-size: .8rem; line-height: 1.5; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--card2); border-radius: 10px; padding: 10px; text-align: center; }
+  .stat .v { font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat .l { color: var(--ink3); font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+  .grids { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .zgrid { display: grid; grid-template-columns: repeat(3, 64px); grid-auto-rows: 46px; gap: 4px; }
+  .zgrid div {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; font-size: .95rem; color: var(--ink2);
+  }
+  .zgrid div.tgt { outline: 3px solid var(--good); color: var(--ink); }
+  .glabel { color: var(--ink3); font-size: .75rem; margin-bottom: 6px; }
+
+  .log { list-style: none; max-height: 220px; overflow-y: auto; font-size: .85rem; }
+  .log li { padding: 6px 2px; border-bottom: 1px solid var(--line); color: var(--ink2); display: flex; gap: 8px; }
+  .log li b { color: var(--ink); }
+  .log .ok { color: var(--good); font-weight: 700; }
+  .log .miss { color: var(--ink3); }
+  .log .t { margin-left: auto; color: var(--ink3); font-variant-numeric: tabular-nums; }
+
+  footer { margin-top: 30px; text-align: center; color: var(--ink3); font-size: .78rem; }
+  footer .canes { color: var(--red); font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="https://a.espncdn.com/i/teamlogos/nhl/500/car.png" alt="">
+  <div class="grow">
+    <div class="tagline">J's Canes HQ</div>
+    <h1>&#127919; Shot Tracker</h1>
+  </div>
+  <a class="back" href="../">&#8249; Canes Central</a>
+</header>
+
+<div class="wrap">
+
+  <div class="row">
+    <button id="mCam">&#128247; Camera</button>
+    <label class="filebtn" for="mFile">&#127909; Video file</label>
+    <input type="file" id="mFile" accept="video/*" style="display:none">
+    <button id="mDemo">&#127918; Demo</button>
+    <span class="grow"></span>
+    <button id="voiceBtn" class="on" title="Voice callouts">&#128266;</button>
+  </div>
+
+  <div class="stage">
+    <video id="vid" playsinline muted></video>
+    <canvas id="view" width="640" height="360"></canvas>
+    <div class="msg" id="msg">Pick an input above.<br><br>&#128247; <b>Camera</b> — prop the phone up facing the fridge/net.<br>&#127918; <b>Demo</b> — fake beanbags, no camera needed.</div>
+    <div class="banner" id="banner"></div>
+  </div>
+
+  <div class="row">
+    <button id="trackBtn" class="primary" disabled>&#9654; Start tracking</button>
+    <button id="calBtn" disabled>&#128205; Reset corners</button>
+    <label class="slider">Sensitivity <input type="range" id="sens" min="1" max="10" value="5"></label>
+  </div>
+  <p class="hint" style="margin-top:8px">Drag the <b style="color:var(--red)">red corner dots</b> onto the corners of your target (fridge rectangle, taped square, or the net). Then start tracking and let &rsquo;em fly. Stand off to the side so you&rsquo;re not in front of the target.</p>
+
+  <div class="panel">
+    <h2>This Session</h2>
+    <div class="stats">
+      <div class="stat"><div class="v" id="stShots">0</div><div class="l">Shots</div></div>
+      <div class="stat"><div class="v" id="stAcc">–</div><div class="l">Called accuracy</div></div>
+      <div class="stat"><div class="v" id="stStreak">0</div><div class="l">Streak</div></div>
+    </div>
+    <div class="grids" style="margin-top:14px">
+      <div>
+        <div class="glabel">Call your shot — tap a zone to target it (tap again to clear)</div>
+        <div class="zgrid" id="callGrid"></div>
+      </div>
+      <div>
+        <div class="glabel">Heat map — where the shots landed</div>
+        <div class="zgrid" id="heatGrid"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="resetBtn">End session &amp; save</button>
+      <span class="hint" id="histLine"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Shot Log</h2>
+    <ul class="log" id="log"><li class="hint" style="border:none">No shots yet.</li></ul>
+  </div>
+
+  <div class="panel">
+    <h2>Tips for the fridge trial</h2>
+    <p class="hint">
+      &bull; Tape a rectangle on the fridge (painter&rsquo;s tape) and drag the corners to match.<br>
+      &bull; Beanbags, rolled socks, tape balls — anything that contrasts with the fridge works.<br>
+      &bull; Phone on a chair or counter, 6&ndash;10 ft back, steady. Good light helps a lot.<br>
+      &bull; Too many phantom hits? Lower sensitivity. Missing real ones? Raise it.<br>
+      &bull; At home: same thing, corners on the goal posts &amp; crossbar. Foam pucks first!
+    </p>
+  </div>
+
+  <footer>
+    <div class="canes">Go Canes! &#127744;</div>
+    <div style="margin-top:6px">Runs entirely on this device — no video ever leaves it.</div>
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* ================= state ================= */
+const $ = id => document.getElementById(id);
+const ZONES = [
+  'Top left corner', 'Top shelf', 'Top right corner',
+  'Middle left', 'Center', 'Middle right',
+  'Bottom left', 'Five hole', 'Bottom right',
+];
+const PROC_W = 192;
+let source = null;          // 'cam' | 'file' | 'demo'
+let tracking = false;
+let voiceOn = true;
+let corners = null;         // 4 normalized [x,y]: TL TR BR BL
+let targetZone = null;
+let shots = [];             // {zone,u,v,called,hit,t}
+let streak = 0;
+let Hinv = null, maskIdx = null, maskU = null, maskV = null;
+let prevGray = null;
+let state = 'armed', collectLeft = 0, best = null, quietFrames = 0, lastHitAt = 0;
+let hitMarks = [];          // fading markers {u,v,at}
+window.__shots = shots;     // test hook
+
+const vid = $('vid'), view = $('view'), vctx = view.getContext('2d');
+const proc = document.createElement('canvas'), pctx = proc.getContext('2d', { willReadFrequently: true });
+const demoCv = document.createElement('canvas'); demoCv.width = 640; demoCv.height = 360;
+const dctx = demoCv.getContext('2d');
+
+/* ================= persistence ================= */
+const LS = 'canes_shot_tracker_v1';
+function saveCfg() {
+  try { localStorage.setItem(LS, JSON.stringify({ corners, sens: $('sens').value, voiceOn })); } catch (e) {}
+}
+function loadCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem(LS));
+    if (c) { if (c.corners) corners = c.corners; if (c.sens) $('sens').value = c.sens; if (c.voiceOn === false) toggleVoice(); }
+  } catch (e) {}
+}
+function sessionHistory() {
+  try { return JSON.parse(localStorage.getItem(LS + '_hist')) || []; } catch (e) { return []; }
+}
+function renderHist() {
+  const h = sessionHistory();
+  $('histLine').textContent = h.length
+    ? `Saved sessions: ${h.length} · last: ${h[h.length-1].n} shots${h[h.length-1].acc != null ? ', ' + h[h.length-1].acc + '% called' : ''}`
+    : '';
+}
+
+/* ================= homography (unit square -> quad, + inverse) ================= */
+function computeH(q) {
+  const [p0, p1, p2, p3] = q; // TL TR BR BL
+  const sx = p0[0] - p1[0] + p2[0] - p3[0], sy = p0[1] - p1[1] + p2[1] - p3[1];
+  const dx1 = p1[0] - p2[0], dx2 = p3[0] - p2[0], dy1 = p1[1] - p2[1], dy2 = p3[1] - p2[1];
+  const den = dx1 * dy2 - dx2 * dy1;
+  const g = (sx * dy2 - sy * dx2) / den, h = (dx1 * sy - dy1 * sx) / den;
+  const a = p1[0] - p0[0] + g * p1[0], b = p3[0] - p0[0] + h * p3[0], c = p0[0];
+  const d = p1[1] - p0[1] + g * p1[1], e = p3[1] - p0[1] + h * p3[1], f = p0[1];
+  return [a, b, c, d, e, f, g, h, 1];
+}
+function inv3(m) {
+  const [a,b,c,d,e,f,g,h,i] = m;
+  const A = e*i-f*h, B = c*h-b*i, C = b*f-c*e;
+  const D = f*g-d*i, E = a*i-c*g, F = c*d-a*f;
+  const G = d*h-e*g, H = b*g-a*h, I = a*e-b*d;
+  const det = a*A + b*D + c*G;
+  return [A/det, B/det, C/det, D/det, E/det, F/det, G/det, H/det, I/det];
+}
+function applyH(m, x, y) {
+  const w = m[6]*x + m[7]*y + m[8];
+  return [(m[0]*x + m[1]*y + m[2]) / w, (m[3]*x + m[4]*y + m[5]) / w];
+}
+function quadToView(u, v) { // normalized quad coords -> view px
+  const H = computeH(corners.map(p => [p[0]*view.width, p[1]*view.height]));
+  return applyH(H, u, v);
+}
+
+/* ================= mask precompute (proc-space) ================= */
+function rebuildMask() {
+  if (!corners) return;
+  const pw = proc.width, ph = proc.height;
+  const q = corners.map(p => [p[0]*pw, p[1]*ph]);
+  Hinv = inv3(computeH(q));
+  const idx = [], us = [], vs = [];
+  for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
+    const [u, v] = applyH(Hinv, x + .5, y + .5);
+    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) { idx.push(y*pw + x); us.push(u); vs.push(v); }
+  }
+  maskIdx = Int32Array.from(idx); maskU = Float32Array.from(us); maskV = Float32Array.from(vs);
+  prevGray = null;
+}
+
+/* ================= sources ================= */
+function setMode(btn) {
+  ['mCam','mDemo'].forEach(id => $(id).classList.toggle('on', $(id) === btn));
+}
+function readyStage(w, h) {
+  view.width = w; view.height = h;
+  proc.width = PROC_W; proc.height = Math.max(24, Math.round(PROC_W * h / w));
+  if (!corners) corners = [[.28,.22],[.72,.22],[.72,.72],[.28,.72]];
+  rebuildMask();
+  $('msg').style.display = 'none';
+  $('trackBtn').disabled = false; $('calBtn').disabled = false;
+}
+async function startCam() {
+  stopAll();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false,
+    });
+    vid.srcObject = stream;
+    await vid.play();
+    source = 'cam'; setMode($('mCam'));
+    readyStage(vid.videoWidth || 640, vid.videoHeight || 360);
+  } catch (e) {
+    $('msg').innerHTML = 'Camera blocked or unavailable.<br>Check the browser&rsquo;s camera permission and try again.';
+    $('msg').style.display = 'flex';
+  }
+}
+function startFile(f) {
+  stopAll();
+  vid.srcObject = null;
+  vid.src = URL.createObjectURL(f);
+  vid.loop = true;
+  vid.play().then(() => { source = 'file'; setMode(null); readyStage(vid.videoWidth, vid.videoHeight); });
+}
+function startDemo() {
+  stopAll();
+  source = 'demo'; setMode($('mDemo'));
+  readyStage(demoCv.width, demoCv.height);
+  corners = [[.33,.18],[.67,.18],[.67,.78],[.33,.78]]; // matches drawn fridge
+  rebuildMask();
+  demo.t0 = performance.now(); demo.next = 1200; demo.bag = null;
+}
+function stopAll() {
+  tracking = false; updateTrackBtn();
+  if (vid.srcObject) { vid.srcObject.getTracks().forEach(t => t.stop()); vid.srcObject = null; }
+  vid.removeAttribute('src');
+}
+
+/* ================= demo animation ================= */
+const demo = { t0: 0, next: 0, bag: null };
+function demoFrame(now) {
+  const w = demoCv.width, h = demoCv.height;
+  dctx.fillStyle = '#cfd6dc'; dctx.fillRect(0, 0, w, h);          // kitchen wall
+  dctx.fillStyle = '#a8b2ba'; dctx.fillRect(0, h*.86, w, h*.14);  // floor
+  dctx.fillStyle = '#e9edf0'; dctx.fillRect(w*.30, h*.12, w*.40, h*.72); // fridge
+  dctx.strokeStyle = '#98a2ab'; dctx.lineWidth = 3;
+  dctx.strokeRect(w*.30, h*.12, w*.40, h*.72);
+  dctx.strokeRect(w*.33, h*.18, w*.34, h*.60);                    // taped target
+  const t = now - demo.t0;
+  if (!demo.bag && t > demo.next) {
+    const u = .1 + Math.random()*.8, v = .1 + Math.random()*.8;   // impact point in target
+    demo.bag = { x0: w*.05, y0: h*.95, x1: w*(.33+.34*u), y1: h*(.18+.60*v), start: now, fly: 550, land: 0 };
+    (window.__demoTargets = window.__demoTargets || []).push({ u, v });
+  }
+  if (demo.bag) {
+    const b = demo.bag, k = Math.min(1, (now - b.start) / b.fly);
+    let x = b.x0 + (b.x1-b.x0)*k, y = b.y0 + (b.y1-b.y0)*k - Math.sin(Math.PI*k)*h*.25;
+    if (k >= 1) { // bag drops after impact
+      if (!b.land) b.land = now;
+      const dt = (now - b.land)/1000;
+      y = b.y1 + 500*dt*dt; x = b.x1;
+      if (y > h + 30) { demo.bag = null; demo.next = t + 1400 + Math.random()*1200; }
+    }
+    dctx.fillStyle = '#7a1420';
+    dctx.beginPath(); dctx.ellipse(x, y, 13, 10, .3, 0, 7); dctx.fill();
+  }
+}
+
+/* ================= detection ================= */
+function sensThresh() { return 65 - 5 * (+$('sens').value); } // pixel diff threshold
+function detect(now) {
+  pctx.drawImage(source === 'demo' ? demoCv : vid, 0, 0, proc.width, proc.height);
+  const d = pctx.getImageData(0, 0, proc.width, proc.height).data;
+  const n = proc.width * proc.height;
+  const gray = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++) { const j = i*4; gray[i] = (d[j] + 2*d[j+1] + d[j+2]) >> 2; }
+  if (!prevGray || !maskIdx) { prevGray = gray; return; }
+  const th = sensThresh();
+  let count = 0, su = 0, sv = 0;
+  for (let k = 0; k < maskIdx.length; k++) {
+    const i = maskIdx[k];
+    if (Math.abs(gray[i] - prevGray[i]) > th) { count++; su += maskU[k]; sv += maskV[k]; }
+  }
+  prevGray = gray;
+  const onTh = Math.max(6, Math.round(maskIdx.length * .004));
+  const occl = count > maskIdx.length * .45;
+
+  if (state === 'armed') {
+    if (occl) { state = 'cooldown'; quietFrames = 0; }
+    else if (count >= onTh && now - lastHitAt > 700) {
+      // impact = where motion last was before the object pauses (a throw stops
+      // dead for a few frames at the wall/net; peak motion is mid-flight)
+      state = 'collect'; collectLeft = 40;
+      best = { count, u: su/count, v: sv/count, last: null, quiet: 0 };
+    }
+  } else if (state === 'collect') {
+    if (occl) { state = 'cooldown'; quietFrames = 0; best = null; }
+    else {
+      if (count >= onTh) {
+        best.last = { u: su/count, v: sv/count };
+        best.quiet = 0;
+        if (count > best.count) { best.count = count; best.u = su/count; best.v = sv/count; }
+      } else {
+        // settling: tiny residual motion sits exactly at the impact point,
+        // unlike flight centroids which lag along the trajectory
+        if (count >= 3 && best.last) best.settle = { u: su/count, v: sv/count };
+        if (best.last && ++best.quiet >= 2) collectLeft = 0; // paused at impact
+      }
+      if (--collectLeft <= 0) {
+        const p = best.settle || best.last || best;
+        commitHit(p.u, p.v); lastHitAt = now;
+        state = 'cooldown'; quietFrames = 0; best = null;
+      }
+    }
+  } else { // cooldown
+    if (count < onTh / 2) { if (++quietFrames >= 6 && now - lastHitAt > 700) state = 'armed'; }
+    else quietFrames = 0;
+  }
+}
+
+function commitHit(u, v) {
+  const zone = Math.min(2, Math.floor(v*3)) * 3 + Math.min(2, Math.floor(u*3));
+  const called = targetZone;
+  const hit = called != null ? zone === called : null;
+  if (called != null) streak = hit ? streak + 1 : 0;
+  shots.push({ zone, u, v, called, hit, t: Date.now() });
+  hitMarks.push({ u, v, at: performance.now() });
+  renderStats(); renderLog(); renderHeat();
+  flash(ZONES[zone] + (hit === true ? ' — nailed it!' : hit === false ? ` (called ${ZONES[called]})` : ''), hit);
+  speak(hit === true ? `${ZONES[zone]}. Nailed it!` : ZONES[zone]);
+}
+
+/* ================= feedback ui ================= */
+let flashTimer = null;
+function flash(text, hit) {
+  const b = $('banner');
+  b.textContent = (hit === true ? '✅ ' : hit === false ? '❌ ' : '\u{1F3AF} ') + text;
+  b.style.color = hit === false ? 'var(--ink2)' : hit === true ? 'var(--good)' : 'var(--ink)';
+  b.style.display = 'block';
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => b.style.display = 'none', 2200);
+}
+function speak(text) {
+  if (!voiceOn || !window.speechSynthesis) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
+}
+function renderStats() {
+  $('stShots').textContent = shots.length;
+  const called = shots.filter(s => s.called != null);
+  $('stAcc').textContent = called.length ? Math.round(100 * called.filter(s => s.hit).length / called.length) + '%' : '–';
+  $('stStreak').textContent = streak;
+}
+function renderLog() {
+  const ul = $('log');
+  ul.innerHTML = shots.slice(-30).reverse().map((s, i) => {
+    const n = shots.length - i;
+    const mark = s.hit === true ? '<span class="ok">&#10003; called</span>' : s.hit === false ? `<span class="miss">wanted ${ZONES[s.called]}</span>` : '';
+    return `<li><b>#${n}</b> ${ZONES[s.zone]} ${mark}<span class="t">${new Date(s.t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}</span></li>`;
+  }).join('') || '<li class="hint" style="border:none">No shots yet.</li>';
+}
+function renderHeat() {
+  const counts = Array(9).fill(0);
+  shots.forEach(s => counts[s.zone]++);
+  const max = Math.max(1, ...counts);
+  [...$('heatGrid').children].forEach((c, i) => {
+    c.textContent = counts[i] || '';
+    c.style.background = counts[i] ? `rgba(206,17,38,${.15 + .55*counts[i]/max})` : 'var(--card2)';
+    c.style.color = counts[i] ? 'var(--ink)' : 'var(--ink2)';
+  });
+}
+function renderCall() {
+  [...$('callGrid').children].forEach((c, i) => c.classList.toggle('tgt', i === targetZone));
+}
+
+/* ================= render loop ================= */
+function draw(now) {
+  requestAnimationFrame(draw);
+  if (!source) return;
+  if (source === 'demo') demoFrame(now);
+  const src = source === 'demo' ? demoCv : vid;
+  if (src === vid && vid.readyState < 2) return;
+  vctx.drawImage(src, 0, 0, view.width, view.height);
+  if (tracking) detect(now);
+
+  if (corners) {
+    const px = corners.map(p => [p[0]*view.width, p[1]*view.height]);
+    // grid lines
+    vctx.strokeStyle = 'rgba(242,244,247,.45)'; vctx.lineWidth = 1;
+    for (let i = 1; i < 3; i++) {
+      let a = quadToView(i/3, 0), b = quadToView(i/3, 1);
+      vctx.beginPath(); vctx.moveTo(a[0], a[1]); vctx.lineTo(b[0], b[1]); vctx.stroke();
+      a = quadToView(0, i/3); b = quadToView(1, i/3);
+      vctx.beginPath(); vctx.moveTo(a[0], a[1]); vctx.lineTo(b[0], b[1]); vctx.stroke();
+    }
+    // outline + corners
+    vctx.strokeStyle = tracking ? 'rgba(76,175,125,.95)' : 'rgba(206,17,38,.95)'; vctx.lineWidth = 3;
+    vctx.beginPath(); vctx.moveTo(px[0][0], px[0][1]);
+    px.slice(1).forEach(p => vctx.lineTo(p[0], p[1])); vctx.closePath(); vctx.stroke();
+    if (!tracking) px.forEach(p => {
+      vctx.fillStyle = '#CE1126';
+      vctx.beginPath(); vctx.arc(p[0], p[1], 11, 0, 7); vctx.fill();
+      vctx.fillStyle = '#fff'; vctx.beginPath(); vctx.arc(p[0], p[1], 3.5, 0, 7); vctx.fill();
+    });
+    // target zone highlight
+    if (targetZone != null) {
+      const r = Math.floor(targetZone/3), c = targetZone%3;
+      const q = [quadToView(c/3, r/3), quadToView((c+1)/3, r/3), quadToView((c+1)/3, (r+1)/3), quadToView(c/3, (r+1)/3)];
+      vctx.fillStyle = 'rgba(76,175,125,.22)';
+      vctx.beginPath(); vctx.moveTo(q[0][0], q[0][1]); q.slice(1).forEach(p => vctx.lineTo(p[0], p[1])); vctx.closePath(); vctx.fill();
+    }
+    // fading hit markers
+    hitMarks = hitMarks.filter(m => now - m.at < 4000);
+    hitMarks.forEach(m => {
+      const [x, y] = quadToView(m.u, m.v);
+      const a = 1 - (now - m.at)/4000;
+      vctx.strokeStyle = `rgba(255,214,0,${a})`; vctx.lineWidth = 3;
+      vctx.beginPath(); vctx.arc(x, y, 14, 0, 7); vctx.stroke();
+      vctx.beginPath(); vctx.moveTo(x-8, y); vctx.lineTo(x+8, y); vctx.moveTo(x, y-8); vctx.lineTo(x, y+8); vctx.stroke();
+    });
+  }
+}
+
+/* ================= corner dragging ================= */
+let dragI = -1;
+function evPos(e) {
+  const r = view.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return [(t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height];
+}
+view.addEventListener('pointerdown', e => {
+  if (!corners || tracking) return;
+  const [x, y] = evPos(e);
+  const r = view.getBoundingClientRect();
+  dragI = corners.findIndex(p => Math.hypot((p[0]-x)*r.width, (p[1]-y)*r.height) < 26);
+  if (dragI >= 0) view.setPointerCapture(e.pointerId);
+});
+view.addEventListener('pointermove', e => {
+  if (dragI < 0) return;
+  const [x, y] = evPos(e);
+  corners[dragI] = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+});
+view.addEventListener('pointerup', () => { if (dragI >= 0) { dragI = -1; rebuildMask(); saveCfg(); } });
+
+/* ================= controls ================= */
+function updateTrackBtn() {
+  $('trackBtn').innerHTML = tracking ? '&#9632; Stop tracking' : '&#9654; Start tracking';
+  $('trackBtn').classList.toggle('primary', !tracking);
+}
+$('trackBtn').onclick = () => {
+  tracking = !tracking;
+  if (tracking) { state = 'armed'; prevGray = null; rebuildMask(); speak('Tracking on. Fire away!'); }
+  updateTrackBtn();
+};
+$('calBtn').onclick = () => { corners = [[.28,.22],[.72,.22],[.72,.72],[.28,.72]]; rebuildMask(); saveCfg(); };
+$('sens').oninput = saveCfg;
+$('mCam').onclick = startCam;
+$('mDemo').onclick = startDemo;
+$('mFile').onchange = e => { if (e.target.files[0]) startFile(e.target.files[0]); };
+function toggleVoice() { voiceOn = !voiceOn; $('voiceBtn').classList.toggle('on', voiceOn); $('voiceBtn').innerHTML = voiceOn ? '&#128266;' : '&#128263;'; }
+$('voiceBtn').onclick = () => { toggleVoice(); saveCfg(); };
+$('resetBtn').onclick = () => {
+  if (shots.length) {
+    const called = shots.filter(s => s.called != null);
+    const h = sessionHistory();
+    h.push({ when: Date.now(), n: shots.length, acc: called.length ? Math.round(100*called.filter(s => s.hit).length/called.length) : null });
+    try { localStorage.setItem(LS + '_hist', JSON.stringify(h.slice(-20))); } catch (e) {}
+  }
+  shots.length = 0; streak = 0; hitMarks.length = 0;
+  renderStats(); renderLog(); renderHeat(); renderHist();
+};
+
+/* zone grids */
+ZONES.forEach((z, i) => {
+  const c = document.createElement('div'); c.title = z;
+  c.onclick = () => { targetZone = targetZone === i ? null : i; renderCall(); speak(targetZone != null ? 'Target: ' + z : 'Free shooting'); };
+  $('callGrid').appendChild(c);
+  const hd = document.createElement('div'); hd.title = z; hd.style.cursor = 'default';
+  $('heatGrid').appendChild(hd);
+});
+[...$('callGrid').children].forEach((c, i) => c.textContent = ['↖','⬆','↗','⬅','◎','➡','↙','⬇','↘'][i]);
+
+/* ================= boot ================= */
+loadCfg(); renderStats(); renderHeat(); renderCall(); renderHist();
+requestAnimationFrame(draw);
+if (new URLSearchParams(location.search).get('demo') === '1') {
+  startDemo(); tracking = true; updateTrackBtn(); state = 'armed';
+}
+</script>
+</body>
+</html>
