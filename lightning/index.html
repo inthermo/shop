@@ -61,7 +61,7 @@
   <div class="row"><span>Nearby (30 mi)</span><span class="val" id="nearby">0</span></div>
   <div class="row"><span>Nearest</span><span class="val" id="nearest">—</span></div>
   <div class="row" style="color:#999"><span>Whole world</span><span id="count" style="font-variant-numeric:tabular-nums">0</span></div>
-  <div class="note">Live feed — shows strikes from <b><span id="since">…</span></b> onward (no history before you opened the page)</div>
+  <div class="note" id="hist-note">Live feed — shows strikes from <b><span id="since">…</span></b> onward</div>
   <div class="note">Drag the blue dot to set “you”, or tap 📍 to use your GPS</div>
 </div>
 <div id="radar-ctl">
@@ -96,6 +96,13 @@ const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}
 
 const map = L.map("map", { preferCanvas: true, layers: [light] }).setView(home, 8);
 const layersCtl = L.control.layers({ "Light": light, "Dark": dark }, null, { position: "topleft" }).addTo(map);
+
+// Air quality overlay (WAQI/EPA station tiles) — toggle in the layers menu
+const aqi = L.tileLayer("https://tiles.waqi.info/tiles/usepa-aqi/{z}/{x}/{y}.png?token=demo", {
+  opacity: 0.75, maxZoom: 19, zIndex: 4,
+  attribution: 'Air quality &copy; <a href="https://waqi.info">WAQI.info</a>'
+});
+layersCtl.addOverlay(aqi, "Air quality");
 
 L.circleMarker(SHOP, { radius: 5, color: "#667788", weight: 2, fillColor: "#8899aa", fillOpacity: 0.5 })
   .addTo(map).bindTooltip("Shop (Lakeville, MN)");
@@ -208,26 +215,49 @@ function haversineMi(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function addStrike(lat, lon) {
-  const now = Date.now();
-  const [, fill, radius, fillOpacity] = BUCKETS[0];
+function addStrike(lat, lon, t, flash) {
+  t = t || Date.now();
+  const b = bucketFor(Date.now() - t);
+  if (b === -1) return;
+  const [, fill, radius, fillOpacity] = BUCKETS[b];
   const marker = L.circleMarker([lat, lon], {
     renderer, radius, fillColor: fill, fillOpacity,
     stroke: true, color: "#551000", weight: 1, opacity: 0.5
   }).addTo(map);
-  strikes.push({ t: now, lat, lon, marker, bucket: 0, distMi: haversineMi(home[0], home[1], lat, lon) });
+  strikes.push({ t, lat, lon, marker, bucket: b, distMi: haversineMi(home[0], home[1], lat, lon) });
 
-  // brief flash ring so fresh strikes catch the eye
-  const flash = L.circleMarker([lat, lon], {
-    renderer, radius: 14, fill: false, color: "#ff2400", weight: 2.5, opacity: 0.9
-  }).addTo(map);
-  setTimeout(() => map.removeLayer(flash), 900);
+  if (flash) {
+    // brief flash ring so fresh strikes catch the eye
+    const ring = L.circleMarker([lat, lon], {
+      renderer, radius: 14, fill: false, color: "#ff2400", weight: 2.5, opacity: 0.9
+    }).addTo(map);
+    setTimeout(() => map.removeLayer(ring), 900);
+  }
 
   if (strikes.length > MAX_STRIKES) {
     const s = strikes.shift();
     map.removeLayer(s.marker);
   }
 }
+
+// Backfill the last ~30 min from the Lightning Cache (collector on the shop PC
+// listens 24/7) so the map doesn't open empty.
+const CACHE_URL = "https://script.google.com/macros/s/AKfycbz9wYjKsmgtfMddPW1vyMh85pYIviyKVg7nTcwE4LVN0iEwi7tfgjvmAsXUG69LB9aI/exec";
+fetch(CACHE_URL + "?op=recent")
+  .then(r => r.json())
+  .then(j => {
+    if (!j.minutes || !j.minutes.length) return;
+    let n = 0;
+    for (const m of j.minutes) {
+      const t = m.min * 60000 + 30000; // middle of that minute
+      for (const p of m.pts) { addStrike(p[0], p[1], t, false); n++; }
+    }
+    strikes.sort((a, b) => a.t - b.t); // keep prune-from-front correct
+    if (n) document.getElementById("hist-note").innerHTML =
+      "Preloaded <b>last 30 min</b> of strikes, now live";
+    updateHud();
+  })
+  .catch(() => {});
 
 // Blitzortung messages arrive LZW-compressed; standard community decoder.
 function decode(b) {
@@ -275,7 +305,7 @@ function connect() {
     try {
       const data = JSON.parse(decode(msg.data));
       if (typeof data.lat === "number" && typeof data.lon === "number") {
-        addStrike(data.lat, data.lon);
+        addStrike(data.lat, data.lon, Date.now(), true);
       }
     } catch (e) { /* ignore malformed frames */ }
   };
