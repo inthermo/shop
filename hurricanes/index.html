@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canes Central — Carolina Hurricanes</title>
+<link rel="icon" href="https://a.espncdn.com/i/teamlogos/nhl/500/car.png">
+<style>
+  :root {
+    --red: #CE1126;
+    --red-dim: #8f0c1b;
+    --bg: #0d0f12;
+    --card: #16191e;
+    --card2: #1c2026;
+    --line: #262b33;
+    --ink: #f2f4f7;
+    --ink2: #aab2bd;
+    --ink3: #6b7480;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 48px; }
+
+  /* Header */
+  header {
+    background: linear-gradient(160deg, #1a0509 0%, var(--bg) 65%);
+    border-bottom: 3px solid var(--red);
+    padding: 28px 16px 22px;
+  }
+  .head-inner { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .head-inner img { width: 84px; height: 84px; }
+  h1 { font-size: 1.7rem; letter-spacing: .5px; }
+  .tagline { color: var(--red); font-weight: 700; font-size: .85rem; text-transform: uppercase; letter-spacing: 2px; }
+  .record-line { color: var(--ink2); margin-top: 4px; font-size: .95rem; }
+  .record-line b { color: var(--ink); }
+
+  section { margin-top: 34px; }
+  h2 {
+    font-size: 1.05rem; text-transform: uppercase; letter-spacing: 1.5px;
+    border-left: 4px solid var(--red); padding-left: 10px; margin-bottom: 14px;
+  }
+  .note { color: var(--ink3); font-size: .8rem; margin-top: 8px; }
+  .err { color: var(--ink3); font-style: italic; padding: 12px 0; }
+
+  /* Next game */
+  .game-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .game-card img { width: 52px; height: 52px; }
+  .game-when { color: var(--ink2); font-size: .9rem; }
+  .countdown { margin-left: auto; text-align: right; }
+  .countdown .big { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .countdown .lbl { color: var(--ink3); font-size: .75rem; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* Leaders */
+  .leaders { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .leader {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; text-align: center;
+  }
+  .leader img { width: 64px; height: 64px; border-radius: 50%; background: var(--card2); object-fit: cover; }
+  .leader .name { font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .leader .pos { color: var(--ink3); font-size: .75rem; }
+  .leader .val { font-size: 1.9rem; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .leader .sub { color: var(--ink2); font-size: .78rem; }
+  .leader .stat-lbl { color: var(--ink3); font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* Controls */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .controls button {
+    background: var(--card); color: var(--ink2); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 14px; font-size: .82rem; cursor: pointer;
+  }
+  .controls button.on { background: var(--red); border-color: var(--red); color: #fff; font-weight: 700; }
+
+  /* Tables */
+  .tbl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: .87rem; }
+  th, td { padding: 8px 10px; white-space: nowrap; }
+  thead th {
+    color: var(--ink3); font-size: .72rem; text-transform: uppercase; letter-spacing: .5px;
+    text-align: right; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none;
+    position: sticky; top: 0; background: var(--card);
+  }
+  thead th.l { text-align: left; }
+  tbody td { text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; color: var(--ink2); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td.l { text-align: left; color: var(--ink); }
+  tbody tr:hover td { background: var(--card2); }
+  tr.me td { background: rgba(206, 17, 38, .12); color: var(--ink); font-weight: 600; }
+  .pcell { display: flex; align-items: center; gap: 8px; }
+  .pcell img { width: 26px; height: 26px; border-radius: 50%; background: var(--card2); object-fit: cover; }
+  .pcell .num { color: var(--ink3); font-size: .75rem; width: 20px; text-align: right; }
+  .grp-row td { text-align: left; color: var(--red); font-weight: 700; font-size: .75rem; text-transform: uppercase; letter-spacing: 1px; background: var(--bg); }
+
+  /* Schedule */
+  .sched { display: grid; gap: 8px; }
+  .sched-row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px; font-size: .88rem;
+  }
+  .sched-row img { width: 30px; height: 30px; }
+  .sched-row .d { color: var(--ink3); width: 108px; flex-shrink: 0; font-size: .8rem; }
+  .sched-row .vs { color: var(--ink3); font-size: .75rem; width: 26px; }
+  .sched-row .res { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .res.W { color: #4caf7d; } .res.L { color: var(--ink3); }
+
+  /* News */
+  .news { display: grid; gap: 10px; }
+  .news a {
+    display: flex; gap: 14px; align-items: center; text-decoration: none;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  }
+  .news a:hover { background: var(--card2); }
+  .news img { width: 92px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--card2); flex-shrink: 0; }
+  .news .h { font-weight: 600; font-size: .92rem; }
+  .news .m { color: var(--ink3); font-size: .76rem; margin-top: 3px; }
+
+  footer { margin-top: 44px; text-align: center; color: var(--ink3); font-size: .78rem; }
+  footer .canes { color: var(--red); font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+  .loading { color: var(--ink3); padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-inner">
+    <img src="https://a.espncdn.com/i/teamlogos/nhl/500/car.png" alt="Carolina Hurricanes logo">
+    <div>
+      <div class="tagline">J's Canes HQ</div>
+      <h1>Carolina Hurricanes</h1>
+      <div class="record-line" id="recordLine">Loading…</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section id="secNext" hidden>
+    <h2>Next Game</h2>
+    <div class="game-card" id="nextGame"></div>
+  </section>
+
+  <section id="secLeaders">
+    <h2>Point Leaders <span style="color:var(--ink3);font-weight:400;text-transform:none;letter-spacing:0" id="leadersSeason"></span></h2>
+    <div class="leaders" id="leaders"><div class="loading">Loading player stats…</div></div>
+  </section>
+
+  <section id="secRoster">
+    <h2>Roster &amp; Stats</h2>
+    <div class="controls" id="splitBtns">
+      <button data-split="Regular Season" class="on">Regular Season</button>
+      <button data-split="Postseason">Playoffs</button>
+      <button data-split="Career">Career</button>
+    </div>
+    <div class="tbl-scroll"><table id="skaterTbl"><tbody><tr><td class="loading">Loading roster…</td></tr></tbody></table></div>
+    <div class="tbl-scroll" style="margin-top:12px"><table id="goalieTbl"></table></div>
+    <p class="note">Click a column header to sort. Playoffs = 2026 Cup run.</p>
+  </section>
+
+  <section id="secStandings">
+    <h2 id="standingsTitle">Standings</h2>
+    <div class="tbl-scroll"><table id="standTbl"><tbody><tr><td class="loading">Loading standings…</td></tr></tbody></table></div>
+  </section>
+
+  <section id="secSched">
+    <h2 id="schedTitle">Schedule</h2>
+    <div class="sched" id="sched"><div class="loading">Loading schedule…</div></div>
+  </section>
+
+  <section id="secNews">
+    <h2>Hurricanes News</h2>
+    <div class="news" id="news"><div class="loading">Loading news…</div></div>
+  </section>
+
+  <footer>
+    <div class="canes">Go Canes! &#127744;</div>
+    <div style="margin-top:6px">Live data from ESPN · refreshes on load (cached 3&nbsp;h) · <a href="https://www.nhl.com/hurricanes/" style="color:var(--ink2)">nhl.com/hurricanes</a></div>
+  </footer>
+</div>
+
+<script>
+const TEAM = 'car', TEAM_ID = '7';
+const SITE = 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl';
+const WEB  = 'https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl';
+const CACHE_KEY = 'canes_cache_v1', CACHE_TTL = 3 * 3600 * 1000;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status + ' ' + url);
+  return r.json();
+}
+
+function loadCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY));
+    if (c && Date.now() - c.at < CACHE_TTL) return c.data;
+  } catch (e) {}
+  return null;
+}
+function saveCache(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data })); } catch (e) {}
+}
+
+async function fetchAll() {
+  const cached = loadCache();
+  if (cached) return cached;
+
+  const [team, roster, standings, news, sched] = await Promise.all([
+    getJSON(`${SITE}/teams/${TEAM}`),
+    getJSON(`${SITE}/teams/${TEAM}/roster`),
+    getJSON(`${SITE.replace('/site/v2','/v2')}/standings?level=3`).catch(() => getJSON('https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings?level=3')),
+    getJSON(`${SITE}/news?team=${TEAM_ID}&limit=12`).catch(() => null),
+    getJSON(`${SITE}/teams/${TEAM}/schedule`).catch(() => null),
+  ]);
+
+  // Per-player season stats (parallel, tolerate individual failures)
+  const ids = (roster.athletes || []).flatMap(g => (g.items || []).map(p => p.id));
+  const overviews = {};
+  await Promise.all(ids.map(id =>
+    getJSON(`${WEB}/athletes/${id}/overview`)
+      .then(o => { overviews[id] = o.statistics || null; })
+      .catch(() => { overviews[id] = null; })
+  ));
+
+  const data = { team, roster, standings, news, sched, overviews };
+  saveCache(data);
+  return data;
+}
+
+/* ---- stat helpers ---- */
+function statMap(stats, splitName) {
+  // stats: {names:[], splits:[{displayName, stats:[]}]} -> {name: value}
+  if (!stats || !stats.names) return null;
+  const split = (stats.splits || []).find(s => s.displayName === splitName);
+  if (!split) return null;
+  const out = {};
+  stats.names.forEach((n, i) => { out[n] = split.stats[i]; });
+  return out;
+}
+const num = v => { const n = parseFloat(v); return isNaN(n) ? -1 : n; };
+
+/* ---- render: header ---- */
+function renderHeader(team, standings) {
+  const t = team.team || {};
+  let rec = '';
+  outer:
+  for (const conf of standings?.children || []) {
+    for (const div of conf.children || []) {
+      for (const e of div.standings?.entries || []) {
+        if (e.team?.id === TEAM_ID) {
+          const s = n => (e.stats.find(x => x.name === n) || {}).displayValue || '';
+          rec = `<b>${esc(s('overall') || (s('wins')+'-'+s('losses')+'-'+s('otLosses')))}</b>`;
+          break outer;
+        }
+      }
+    }
+  }
+  const summary = t.standingSummary ? ' · ' + esc(t.standingSummary) : '';
+  $('recordLine').innerHTML = (rec || 'Carolina Hurricanes') + summary + ' <span style="color:var(--ink3)">(2025-26)</span>';
+}
+
+/* ---- render: next game ---- */
+function renderNext(team) {
+  const ev = (team.team?.nextEvent || [])[0];
+  if (!ev) return;
+  const comp = ev.competitions?.[0];
+  const d = new Date(ev.date);
+  const opts = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  const seasonName = ev.seasonType?.name ? ` · ${esc(ev.seasonType.name)}` : '';
+  const logos = (comp?.competitors || []).map(c =>
+    `<img src="https://a.espncdn.com/i/teamlogos/nhl/500/${esc((c.team?.abbreviation||'').toLowerCase())}.png" alt="${esc(c.team?.displayName)}">`
+  ).join('');
+  $('nextGame').innerHTML = `
+    ${logos}
+    <div>
+      <div style="font-weight:700">${esc(ev.name || '')}</div>
+      <div class="game-when">${d.toLocaleString([], opts)}${seasonName}</div>
+    </div>
+    <div class="countdown"><div class="big" id="cd"></div><div class="lbl">until puck drop</div></div>`;
+  $('secNext').hidden = false;
+  const tick = () => {
+    let ms = d - Date.now();
+    if (ms < 0) { $('cd').textContent = 'Today!'; return; }
+    const days = Math.floor(ms / 864e5); ms -= days * 864e5;
+    const h = Math.floor(ms / 36e5); const m = Math.floor((ms - h * 36e5) / 6e4);
+    $('cd').textContent = days > 0 ? `${days}d ${h}h` : `${h}h ${m}m`;
+  };
+  tick(); setInterval(tick, 30000);
+}
+
+/* ---- roster + leaders ---- */
+let rosterData = null, overviewsData = null, curSplit = 'Regular Season';
+let sortKey = 'points', sortDir = -1, goalieSortKey = 'wins', goalieSortDir = -1;
+
+function playerRows() {
+  const groups = { skaters: [], goalies: [] };
+  for (const g of rosterData.athletes || []) {
+    const isG = /goal/i.test(g.position || '');
+    for (const p of g.items || []) {
+      const m = statMap(overviewsData[p.id], curSplit);
+      (isG ? groups.goalies : groups.skaters).push({
+        id: p.id, name: p.displayName, jersey: p.jersey || '',
+        pos: p.position?.abbreviation || '',
+        head: p.headshot?.href || '',
+        group: g.position, stats: m,
+      });
+    }
+  }
+  return groups;
+}
+
+const SK_COLS = [
+  ['games','GP'],['goals','G'],['assists','A'],['points','PTS'],
+  ['plusMinus','+/-'],['penaltyMinutes','PIM'],['shotsTotal','S'],['timeOnIcePerGame','TOI/G'],
+];
+const G_COLS = [
+  ['games','GP'],['wins','W'],['losses','L'],['overtimeLosses','OTL'],
+  ['avgGoalsAgainst','GAA'],['savePct','SV%'],['shutouts','SO'],
+];
+
+function renderTable(tblId, cols, rows, sKey, sDir, onSort) {
+  const head = `<thead><tr><th class="l">Player</th><th>POS</th>${
+    cols.map(([k,l]) => `<th data-k="${k}"${k===sKey?' style="color:var(--red)"':''}>${l}${k===sKey?(sDir<0?' ▾':' ▴'):''}</th>`).join('')
+  }</tr></thead>`;
+  rows.sort((a,b) => sDir * (num(a.stats?.[sKey]) - num(b.stats?.[sKey])) || a.name.localeCompare(b.name));
+  const body = rows.map(p => `<tr>
+    <td class="l"><span class="pcell"><span class="num">${esc(p.jersey)}</span><img loading="lazy" src="${esc(p.head)}" alt=""><span>${esc(p.name)}</span></span></td>
+    <td>${esc(p.pos)}</td>
+    ${cols.map(([k]) => `<td>${p.stats && p.stats[k] != null ? esc(p.stats[k]) : '–'}</td>`).join('')}
+  </tr>`).join('');
+  const tbl = $(tblId);
+  tbl.innerHTML = head + `<tbody>${body || '<tr><td class="err">No stats for this split.</td></tr>'}</tbody>`;
+  tbl.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => onSort(th.dataset.k));
+}
+
+function renderRoster() {
+  const { skaters, goalies } = playerRows();
+  renderTable('skaterTbl', SK_COLS, skaters, sortKey, sortDir, k => {
+    sortDir = (k === sortKey) ? -sortDir : -1; sortKey = k; renderRoster();
+  });
+  renderTable('goalieTbl', G_COLS, goalies, goalieSortKey, goalieSortDir, k => {
+    goalieSortDir = (k === goalieSortKey) ? -goalieSortDir : -1; goalieSortKey = k; renderRoster();
+  });
+}
+
+function renderLeaders() {
+  const { skaters } = playerRows();
+  const top = skaters.filter(p => p.stats).sort((a,b) => num(b.stats.points) - num(a.stats.points)).slice(0,5);
+  $('leadersSeason').textContent = curSplit === 'Career' ? '· career' : (curSplit === 'Postseason' ? '· 2026 playoffs' : '· 2025-26');
+  $('leaders').innerHTML = top.map(p => `
+    <div class="leader">
+      <img loading="lazy" src="${esc(p.head)}" alt="">
+      <div class="name">${esc(p.name)}</div>
+      <div class="pos">#${esc(p.jersey)} · ${esc(p.pos)}</div>
+      <div class="val">${esc(p.stats.points ?? '–')}</div>
+      <div class="stat-lbl">Points</div>
+      <div class="sub">${esc(p.stats.goals ?? '–')} G · ${esc(p.stats.assists ?? '–')} A · ${esc(p.stats.games ?? '–')} GP</div>
+    </div>`).join('') || '<div class="err">Player stats unavailable.</div>';
+}
+
+/* ---- standings ---- */
+function renderStandings(standings) {
+  let myDiv = null;
+  for (const conf of standings?.children || [])
+    for (const div of conf.children || [])
+      if ((div.standings?.entries || []).some(e => e.team?.id === TEAM_ID)) myDiv = div;
+  if (!myDiv) { $('standTbl').innerHTML = '<tbody><tr><td class="err">Standings unavailable.</td></tr></tbody>'; return; }
+  $('standingsTitle').textContent = myDiv.name + ' — Final 2025-26';
+  const cols = [['gamesPlayed','GP'],['wins','W'],['losses','L'],['otLosses','OTL'],['points','PTS'],['pointDifferential','DIFF'],['streak','STRK'],['Last Ten Games','L10']];
+  const entries = [...myDiv.standings.entries].sort((a,b) => {
+    const pv = e => num((e.stats.find(x => x.name === 'points') || {}).value ?? (e.stats.find(x => x.name === 'points') || {}).displayValue);
+    return pv(b) - pv(a);
+  });
+  $('standTbl').innerHTML = `<thead><tr><th class="l">Team</th>${cols.map(([,l]) => `<th style="cursor:default">${l}</th>`).join('')}</tr></thead><tbody>` +
+    entries.map(e => {
+      const s = n => (e.stats.find(x => x.name === n) || {}).displayValue ?? '–';
+      const me = e.team?.id === TEAM_ID;
+      return `<tr${me ? ' class="me"' : ''}>
+        <td class="l"><span class="pcell"><img loading="lazy" src="${esc(e.team?.logos?.[0]?.href || '')}" alt=""><span>${esc(e.team?.displayName || '')}</span></span></td>
+        ${cols.map(([k]) => `<td>${esc(s(k))}</td>`).join('')}</tr>`;
+    }).join('') + '</tbody>';
+}
+
+/* ---- schedule ---- */
+function renderSched(sched) {
+  const evs = sched?.events || [];
+  if (!evs.length) { $('sched').innerHTML = '<div class="err">Schedule not posted yet.</div>'; return; }
+  if (sched.requestedSeason?.displayName) $('schedTitle').textContent = `Schedule · ${sched.requestedSeason.displayName}`;
+  const now = Date.now();
+  const done = evs.filter(e => new Date(e.date) < now).slice(-5);
+  const next = evs.filter(e => new Date(e.date) >= now).slice(0, 10);
+  const row = e => {
+    const comp = e.competitions?.[0] || {};
+    const comps = comp.competitors || [];
+    const us = comps.find(c => c.team?.id === TEAM_ID);
+    const them = comps.find(c => c.team?.id !== TEAM_ID);
+    const d = new Date(e.date);
+    const finished = comp.status?.type?.completed;
+    let res = '';
+    if (finished && us?.score != null) {
+      const w = num(us.score?.value ?? us.score) > num(them?.score?.value ?? them?.score);
+      res = `<span class="res ${w ? 'W' : 'L'}">${w ? 'W' : 'L'} ${esc(String(us.score?.displayValue ?? us.score))}–${esc(String(them?.score?.displayValue ?? them?.score))}</span>`;
+    } else {
+      res = `<span class="res" style="color:var(--ink3)">${d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}</span>`;
+    }
+    const pre = e.seasonType?.type === 1 || /pre/i.test(e.seasonType?.abbreviation || '') ? ' <span style="color:var(--ink3);font-size:.7rem">(pre)</span>' : '';
+    return `<div class="sched-row">
+      <span class="d">${d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})}</span>
+      <span class="vs">${us?.homeAway === 'home' ? 'vs' : '@'}</span>
+      <img loading="lazy" src="https://a.espncdn.com/i/teamlogos/nhl/500/${esc((them?.team?.abbreviation || '').toLowerCase())}.png" alt="">
+      <span>${esc(them?.team?.displayName || 'TBD')}${pre}</span>${res}</div>`;
+  };
+  $('sched').innerHTML =
+    (done.length ? `<div class="note" style="margin:0 0 4px">Recent</div>` + done.map(row).join('') : '') +
+    (next.length ? `<div class="note" style="margin:${done.length ? '10px' : '0'} 0 4px">Upcoming</div>` + next.map(row).join('') : '');
+}
+
+/* ---- news ---- */
+function renderNews(news) {
+  const arts = news?.articles || [];
+  if (!arts.length) { $('news').innerHTML = '<div class="err">No news right now — check <a href="https://www.espn.com/nhl/team/_/name/car">ESPN</a>.</div>'; return; }
+  $('news').innerHTML = arts.map(a => {
+    const img = a.images?.[0]?.url;
+    const when = a.published ? new Date(a.published).toLocaleDateString([], {month:'short', day:'numeric'}) : '';
+    const link = a.links?.web?.href || '#';
+    return `<a href="${esc(link)}" target="_blank" rel="noopener">
+      ${img ? `<img loading="lazy" src="${esc(img)}" alt="">` : ''}
+      <div><div class="h">${esc(a.headline)}</div><div class="m">${esc(when)}${a.description ? ' — ' + esc(a.description).slice(0, 140) : ''}</div></div></a>`;
+  }).join('');
+}
+
+/* ---- boot ---- */
+(async () => {
+  let data;
+  try { data = await fetchAll(); }
+  catch (e) {
+    $('recordLine').textContent = 'Could not reach ESPN — check the connection and refresh.';
+    return;
+  }
+  rosterData = data.roster; overviewsData = data.overviews;
+  try { renderHeader(data.team, data.standings); } catch (e) {}
+  try { renderNext(data.team); } catch (e) {}
+  try { renderLeaders(); renderRoster(); } catch (e) { $('leaders').innerHTML = '<div class="err">Stats unavailable.</div>'; }
+  try { renderStandings(data.standings); } catch (e) {}
+  try { renderSched(data.sched); } catch (e) {}
+  try { renderNews(data.news); } catch (e) {}
+
+  $('splitBtns').querySelectorAll('button').forEach(b => b.onclick = () => {
+    curSplit = b.dataset.split;
+    $('splitBtns').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    renderLeaders(); renderRoster();
+  });
+})();
+</script>
+</body>
+</html>
