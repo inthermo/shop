@@ -47,6 +47,17 @@
   .g-grids { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
   .g-grids .zgrid { grid-template-columns: repeat(3, 84px); grid-auto-rows: 62px; }
   .g-grids .zgrid div { font-size: 1.2rem; }
+  .zgrid div.sugg { outline: 3px solid #ffd600; color: var(--ink); }
+
+  /* Category 4 game */
+  #gGamePanel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .gp-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .gp { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px; font-size: 1.05rem; }
+  .gp b { font-variant-numeric: tabular-nums; font-size: 1.3rem; }
+  .gp.turn { border-color: var(--red); background: rgba(206,17,38,.15); }
+  .g-cat { text-align: center; color: var(--red); font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-top: 10px; }
+  .g-tgt { text-align: center; color: var(--ink2); margin-top: 4px; font-size: .95rem; }
+  .g-tgt b { color: var(--ink); }
   .stage .msg {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--ink2); text-align: center; padding: 20px; font-size: .95rem; background: var(--card);
@@ -208,9 +219,20 @@
     <button id="gVoiceBtn" class="on">&#128266;</button>
   </div>
   <div class="g-ready" id="gReady">Waiting for the camera iPad…</div>
+  <div class="row" id="gGameStart" style="justify-content:center">
+    <button id="gStart1" class="primary">&#127954; Category 4 — Solo</button>
+    <button id="gStart2" class="primary">&#127954; Two Players</button>
+  </div>
+  <div id="gGamePanel" style="display:none">
+    <div class="gp-row" id="gPlayers"></div>
+    <div class="g-cat" id="gCat"></div>
+    <div class="g-tgt" id="gTgt"></div>
+  </div>
   <div class="g-last">
     <div class="zone" id="gZone">—</div>
     <div class="sub" id="gSub">Shots will show up here as they land.</div>
+    <img id="gSnap" alt="What the camera registered" style="max-width:min(420px,92vw);border-radius:10px;border:1px solid var(--line);display:none;margin:10px auto 0">
+    <div class="hint" id="gSnapLbl" style="display:none">What the camera saw — yellow cross = where it scored the hit</div>
   </div>
   <div class="stats">
     <div class="stat"><div class="v" id="gShots">0</div><div class="l">Shots</div></div>
@@ -233,6 +255,7 @@
 'use strict';
 /* ================= state ================= */
 const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ZONES = [
   'Top left corner', 'Top shelf', 'Top right corner',
   'Middle left', 'Center', 'Middle right',
@@ -307,9 +330,39 @@ function applyH(m, x, y) {
   const w = m[6]*x + m[7]*y + m[8];
   return [(m[0]*x + m[1]*y + m[2]) / w, (m[3]*x + m[4]*y + m[5]) / w];
 }
-function quadToView(u, v) { // normalized quad coords -> view px
-  const H = computeH(corners.map(p => [p[0]*view.width, p[1]*view.height]));
+function quadPt(u, v, W, Ht) { // normalized quad coords -> pixel coords at size WxHt
+  const H = computeH(corners.map(p => [p[0]*W, p[1]*Ht]));
   return applyH(H, u, v);
+}
+function quadToView(u, v) { return quadPt(u, v, view.width, view.height); }
+
+/* snapshot of the detection moment — sent to the game screen to reconcile */
+const snapCv = document.createElement('canvas');
+let lastSnap = null;
+function takeSnap(u, v) {
+  const src = source === 'demo' ? demoCv : vid;
+  const W = 320, Ht = Math.max(24, Math.round(W * view.height / view.width));
+  snapCv.width = W; snapCv.height = Ht;
+  const s = snapCv.getContext('2d');
+  try { s.drawImage(src, 0, 0, W, Ht); } catch (e) { return null; }
+  const q = corners.map(p => [p[0]*W, p[1]*Ht]);
+  s.strokeStyle = 'rgba(76,175,125,.9)'; s.lineWidth = 2;
+  s.beginPath(); s.moveTo(q[0][0], q[0][1]); q.slice(1).forEach(p => s.lineTo(p[0], p[1])); s.closePath(); s.stroke();
+  s.strokeStyle = 'rgba(255,255,255,.5)'; s.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    let a = quadPt(i/3, 0, W, Ht), b = quadPt(i/3, 1, W, Ht);
+    s.beginPath(); s.moveTo(a[0], a[1]); s.lineTo(b[0], b[1]); s.stroke();
+    a = quadPt(0, i/3, W, Ht); b = quadPt(1, i/3, W, Ht);
+    s.beginPath(); s.moveTo(a[0], a[1]); s.lineTo(b[0], b[1]); s.stroke();
+  }
+  const [x, y] = quadPt(u, v, W, Ht);
+  s.strokeStyle = '#ffd600'; s.lineWidth = 3;
+  s.beginPath(); s.arc(x, y, 10, 0, 7); s.stroke();
+  s.beginPath(); s.moveTo(x-14, y); s.lineTo(x+14, y); s.moveTo(x, y-14); s.lineTo(x, y+14); s.stroke();
+  try {
+    const d = snapCv.toDataURL('image/jpeg', .55);
+    return d.length > 60000 ? snapCv.toDataURL('image/jpeg', .3) : d;
+  } catch (e) { return null; }
 }
 
 /* ================= mask precompute (proc-space) ================= */
@@ -396,10 +449,10 @@ function demoFrame(now) {
   if (demo.bag) {
     const b = demo.bag, k = Math.min(1, (now - b.start) / b.fly);
     let x = b.x0 + (b.x1-b.x0)*k, y = b.y0 + (b.y1-b.y0)*k - Math.sin(Math.PI*k)*h*.25;
-    if (k >= 1) { // bag drops after impact
+    if (k >= 1) { // bag bounces off and falls immediately (like the real fridge)
       if (!b.land) b.land = now;
       const dt = (now - b.land)/1000;
-      y = b.y1 + 500*dt*dt; x = b.x1;
+      y = b.y1 + 300*dt + 600*dt*dt; x = b.x1;
       if (y > h + 30) { demo.bag = null; demo.next = t + 1400 + Math.random()*1200; }
     }
     dctx.fillStyle = '#7a1420';
@@ -429,26 +482,39 @@ function detect(now) {
   if (state === 'armed') {
     if (occl) { state = 'cooldown'; quietFrames = 0; }
     else if (count >= onTh && now - lastHitAt > CLEAR_MS) {
-      // impact = where motion last was before the object pauses (a throw stops
-      // dead for a few frames at the wall/net; peak motion is mid-flight)
+      // impact = where the throw STOPS being a throw: either it pauses (sticks
+      // in net mesh / settles) or it turns into a straight-down fall (bounces
+      // off the fridge). Peak motion is mid-flight — never use it directly.
       state = 'collect'; collectLeft = 40;
-      best = { count, u: su/count, v: sv/count, last: null, quiet: 0 };
+      best = { count, u: su/count, v: sv/count, last: null, quiet: 0, hist: [{ u: su/count, v: sv/count }] };
     }
   } else if (state === 'collect') {
     if (occl) { state = 'cooldown'; quietFrames = 0; best = null; }
     else {
+      let commitP = null;
       if (count >= onTh) {
-        best.last = { u: su/count, v: sv/count };
-        best.quiet = 0;
-        if (count > best.count) { best.count = count; best.u = su/count; best.v = sv/count; }
+        const c = { u: su/count, v: sv/count };
+        best.last = c; best.quiet = 0; best.hist.push(c);
+        if (count > best.count) { best.count = count; best.u = c.u; best.v = c.v; }
+        // gravity check: two consecutive dominantly-downward deltas = the bag
+        // is falling; impact = where it was before the fall began
+        const h = best.hist, n = h.length;
+        if (n >= 3) {
+          const down = i => (h[i].v - h[i-1].v) > 0.015 && (h[i].v - h[i-1].v) > 2 * Math.abs(h[i].u - h[i-1].u);
+          // impact = just before the fall began; average the two pre-fall points
+          // to cancel the diff-blob centroid lag along the incoming arc
+          if (down(n-1) && down(n-2)) commitP = n >= 4
+            ? { u: (h[n-3].u + h[n-4].u) / 2, v: (h[n-3].v + h[n-4].v) / 2 }
+            : h[n-3];
+        }
+        if (best.hist.length > 30) best.hist.shift();
       } else {
-        // settling: tiny residual motion sits exactly at the impact point,
-        // unlike flight centroids which lag along the trajectory
+        // settling: tiny residual motion sits exactly at the impact point
         if (count >= 3 && best.last) best.settle = { u: su/count, v: sv/count };
         if (best.last && ++best.quiet >= 2) collectLeft = 0; // paused at impact
       }
-      if (--collectLeft <= 0) {
-        const p = best.settle || best.last || best;
+      if (commitP || --collectLeft <= 0) {
+        const p = commitP || best.settle || best.last || best;
         commitHit(p.u, p.v); lastHitAt = now;
         state = 'cooldown'; quietFrames = 0; best = null;
       }
@@ -469,6 +535,7 @@ function commitHit(u, v) {
   const hit = called != null ? zone === called : null;
   if (called != null) streak = hit ? streak + 1 : 0;
   shots.push({ zone, u, v, called, hit, t: Date.now() });
+  lastSnap = takeSnap(u, v);
   hitMarks.push({ u, v, at: performance.now() });
   renderStats(); renderLog(); renderHeat();
   flash(ZONES[zone] + (hit === true ? ' — nailed it!' : hit === false ? ` (called ${ZONES[called]})` : ''), hit);
@@ -669,6 +736,7 @@ async function pushState() {
       tracking,
       armed: state === 'armed',
       readyInMs: (tracking && state !== 'armed' && lastHitAt > 0) ? Math.max(0, Math.round(CLEAR_MS - (now - lastHitAt))) : 0,
+      snap: (lastSnap && lastSnap.length < 80000) ? lastSnap : null,
       at: Date.now(),
     },
   };
@@ -734,16 +802,27 @@ async function gamePoll() {
     c.textContent = counts[i] || '';
     c.style.background = counts[i] ? `rgba(206,17,38,${.15 + .55*counts[i]/max})` : 'var(--card2)';
   });
-  // target highlight (call key wins)
-  const tgt = j.call ? j.call.target : st.target;
-  [...$('gCallGrid').children].forEach((c, i) => c.classList.toggle('tgt', i === tgt));
+  // target highlight (call key wins) — in a game, gRenderGame owns the grid
+  if (!G || G.over) {
+    const tgt = j.call ? j.call.target : st.target;
+    [...$('gCallGrid').children].forEach((c, i) => c.classList.toggle('tgt', i === tgt));
+  }
+  // reconcile snapshot from the camera
+  if (st.snap && $('gSnap').getAttribute('src') !== st.snap) {
+    $('gSnap').src = st.snap;
+    $('gSnap').style.display = 'block'; $('gSnapLbl').style.display = 'block';
+  }
   // new shot announcement
   const seq = st.seq ?? arr.length;
   if (gameLastSeq != null && seq > gameLastSeq && arr.length) {
     const s = arr[arr.length - 1];
-    $('gZone').textContent = (s.hit === true ? '✅ ' : s.hit === false ? '❌ ' : '🎯 ') + ZONES[s.zone];
-    $('gSub').textContent = `Shot #${seq}` + (s.called != null ? (s.hit ? ' — nailed the call!' : ` — called ${ZONES[s.called]}`) : '');
-    speak(s.hit === true ? `${ZONES[s.zone]}. Nailed it!` : ZONES[s.zone]);
+    if (G && !G.over) {
+      gScoreShot(s, seq);
+    } else {
+      $('gZone').textContent = (s.hit === true ? '✅ ' : s.hit === false ? '❌ ' : '🎯 ') + ZONES[s.zone];
+      $('gSub').textContent = `Shot #${seq}` + (s.called != null ? (s.hit ? ' — nailed the call!' : ` — called ${ZONES[s.called]}`) : '');
+      speak(s.hit === true ? `${ZONES[s.zone]}. Nailed it!` : ZONES[s.zone]);
+    }
   }
   gameLastSeq = seq;
 }
@@ -764,6 +843,11 @@ function gameReadyTick() {
 ZONES.forEach((z, i) => {
   const c = document.createElement('div'); c.textContent = ['↖','⬆','↗','⬅','◎','➡','↙','⬇','↘'][i]; c.title = z;
   c.onclick = () => {
+    if (G && !G.over) { // in a game: tapping = call your own shot (5 pts)
+      G.target = i; G.type = 'call'; sendCall(i); gRenderGame();
+      speak('Called: ' + z + '. Five points if you hit it.');
+      return;
+    }
     const cur = c.classList.contains('tgt') ? null : i;
     [...$('gCallGrid').children].forEach((x, k) => x.classList.toggle('tgt', k === cur));
     sendCall(cur);
@@ -773,6 +857,78 @@ ZONES.forEach((z, i) => {
   const hd = document.createElement('div'); hd.title = z; hd.style.cursor = 'default';
   $('gHeatGrid').appendChild(hd);
 });
+
+/* ---- "Category 4" game: 4 rounds (Cat 1-4) x 3 shots, called=5 / storm target=3 / adjacent=1, hat trick +5 ---- */
+const CATS = ['Category 1', 'Category 2', 'Category 3', 'Category 4'];
+let G = null;
+function gStart(n) {
+  G = {
+    players: Array.from({ length: n }, (_, i) => ({ name: n === 1 ? 'J' : (i === 0 ? 'Player 1' : 'Player 2'), score: 0 })),
+    p: 0, round: 0, shot: 0, exact: 0, target: null, type: 'sugg', log: [], over: false,
+  };
+  window.__game = G;
+  $('gGameStart').style.display = 'none'; $('gGamePanel').style.display = 'block';
+  gNextTarget();
+  speak(`${G.players[0].name}, Category 1. Storm target: ${ZONES[G.target]}. Hit it for 3, or tap a zone to call your own for 5.`);
+}
+$('gStart1').onclick = () => gStart(1);
+$('gStart2').onclick = () => gStart(2);
+function gNextTarget() {
+  let t; do { t = Math.floor(Math.random() * 9); } while (t === G.target);
+  G.target = t; G.type = 'sugg';
+  sendCall(t);
+  gRenderGame();
+}
+function gRenderGame() {
+  $('gPlayers').innerHTML = G.players.map((pl, i) =>
+    `<span class="gp${i === G.p && !G.over ? ' turn' : ''}">${esc(pl.name)} <b>${pl.score}</b></span>`).join('');
+  if (!G.over) {
+    $('gCat').textContent = `${CATS[G.round]} — shot ${G.shot + 1} of 3 — ${G.players[G.p].name}`;
+    $('gTgt').innerHTML = G.type === 'call'
+      ? `&#127919; Called: <b>${esc(ZONES[G.target])}</b> — 5 pts (next door = 1)`
+      : `&#9888;&#65039; Storm target: <b>${esc(ZONES[G.target])}</b> — 3 pts (next door = 1) &middot; tap a zone to call your own for 5`;
+  }
+  [...$('gCallGrid').children].forEach((c, i) => {
+    c.classList.toggle('tgt', !G.over && G.type === 'call' && i === G.target);
+    c.classList.toggle('sugg', !G.over && G.type === 'sugg' && i === G.target);
+  });
+}
+function gScoreShot(s, seq) {
+  const t = G.target, zone = s.zone;
+  const dr = Math.abs(Math.floor(zone/3) - Math.floor(t/3)), dc = Math.abs(zone%3 - t%3);
+  let pts = 0, tag;
+  if (zone === t) { pts = G.type === 'call' ? 5 : 3; G.exact++; tag = G.type === 'call' ? '+5 — called it!' : '+3 — storm target!'; }
+  else if (dr <= 1 && dc <= 1) { pts = 1; tag = '+1 — close'; }
+  else tag = 'no points';
+  const pl = G.players[G.p];
+  pl.score += pts;
+  G.log.push({ zone, target: t, type: G.type, pts });
+  let extra = '';
+  G.shot++;
+  if (G.shot >= 3) {
+    if (G.exact === 3) { pl.score += 5; extra = ' HAT TRICK, plus 5!'; }
+    G.shot = 0; G.exact = 0; G.p++;
+    if (G.p >= G.players.length) { G.p = 0; G.round++; }
+  }
+  $('gZone').textContent = (pts > 0 ? '✅ ' : '❌ ') + ZONES[zone];
+  $('gSub').textContent = `${pl.name}: ${tag}${extra}`;
+  if (G.round >= 4) { gFinish(`${ZONES[zone]}. ${tag}.${extra}`); return; }
+  gNextTarget();
+  const intro = G.shot === 0 ? `${G.players[G.p].name}, ${CATS[G.round]}.` : '';
+  speak(`${ZONES[zone]}. ${tag}.${extra} ${intro} Storm target: ${ZONES[G.target]}.`);
+}
+function gFinish(prefix) {
+  G.over = true;
+  const ps = [...G.players].sort((a, b) => b.score - a.score);
+  const win = ps.length === 1 ? `Final score: ${ps[0].score} points!`
+    : ps[0].score === ps[1].score ? `It's a tie at ${ps[0].score}!`
+    : `${ps[0].name} wins, ${ps[0].score} to ${ps[1].score}!`;
+  gRenderGame();
+  $('gCat').textContent = '🏆 ' + win;
+  $('gTgt').textContent = '';
+  speak(`${prefix} Game over. ${win} Go Canes!`);
+  $('gGameStart').style.display = 'flex';
+}
 $('roomIn').onchange = () => { room = roomVal(); $('roomIn').value = room; $('gRoom').textContent = room; saveCfg(); };
 
 /* ================= boot ================= */
