@@ -4,32 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lightning Map</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #111; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #e8e8e8; }
   #map { position: absolute; inset: 0; }
   #hud {
     position: absolute; top: 10px; right: 10px; z-index: 1000;
-    background: rgba(20, 20, 25, 0.88); color: #eee;
+    background: rgba(255, 255, 255, 0.92); color: #222;
     font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 10px 14px; border-radius: 8px; min-width: 190px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    padding: 10px 14px; border-radius: 8px; min-width: 200px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
   }
   #hud .row { display: flex; justify-content: space-between; gap: 12px; }
-  #hud .val { font-variant-numeric: tabular-nums; color: #ffd75e; }
+  #hud .val { font-variant-numeric: tabular-nums; color: #c23a00; font-weight: 600; }
+  #hud .note { font-size: 11px; color: #777; margin-top: 5px; border-top: 1px solid #ddd; padding-top: 4px; max-width: 200px; }
   #status-dot {
     display: inline-block; width: 9px; height: 9px; border-radius: 50%;
-    background: #e05555; margin-right: 6px; vertical-align: baseline;
+    background: #d33; margin-right: 6px;
   }
-  #status-dot.ok { background: #4cd964; }
+  #status-dot.ok { background: #2bb24c; }
   #legend {
     position: absolute; bottom: 22px; right: 10px; z-index: 1000;
-    background: rgba(20, 20, 25, 0.88); color: #ccc;
+    background: rgba(255, 255, 255, 0.92); color: #444;
     font: 11px/1.6 system-ui, sans-serif; padding: 8px 12px; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
   }
-  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-  .leaflet-container { background: #1a1a1f; }
+  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.35); }
+  .ring-label { background: transparent; border: none; box-shadow: none; color: #0077cc; font: 10px system-ui, sans-serif; }
+  .ring-label::before { display: none; }
 </style>
 </head>
 <body>
@@ -37,42 +41,59 @@
 <div id="hud">
   <div><span id="status-dot"></span><span id="status-text">connecting…</span></div>
   <div class="row"><span>Strikes shown</span><span class="val" id="count">0</span></div>
-  <div class="row"><span>Rate</span><span class="val" id="rate">0/min</span></div>
+  <div class="row"><span>Rate (global)</span><span class="val" id="rate">0/min</span></div>
+  <div class="row"><span>Nearby (30 mi)</span><span class="val" id="nearby">0</span></div>
   <div class="row"><span>Nearest</span><span class="val" id="nearest">—</span></div>
+  <div class="note">Live feed — shows strikes from <b><span id="since">…</span></b> onward (no history before you opened the page)</div>
 </div>
 <div id="legend">
-  <div><span class="sw" style="background:#ffffff"></span>&lt; 1 min</div>
-  <div><span class="sw" style="background:#ffd75e"></span>1–5 min</div>
-  <div><span class="sw" style="background:#ff8c3a"></span>5–10 min</div>
-  <div><span class="sw" style="background:#b04a2a"></span>10–15 min</div>
+  <div><span class="sw" style="background:#ff2400"></span>&lt; 1 min</div>
+  <div><span class="sw" style="background:#ff7a00"></span>1–5 min</div>
+  <div><span class="sw" style="background:#cf8f1f"></span>5–15 min</div>
+  <div><span class="sw" style="background:#9b8468"></span>15–30 min</div>
 </div>
 <script>
 "use strict";
 
 const HOME = [42.8745, -77.2886]; // Canandaigua, NY (Will's current spot)
 const SHOP = [44.6497, -93.2427]; // Lakeville, MN
-const MAX_AGE_MS = 15 * 60 * 1000;
+const MAX_AGE_MS = 30 * 60 * 1000;
 const MAX_STRIKES = 8000;
+const NEARBY_MI = 30;
 const SERVERS = ["wss://ws1.blitzortung.org/", "wss://ws7.blitzortung.org/", "wss://ws8.blitzortung.org/"];
+const MI_TO_M = 1609.34;
 
-const map = L.map("map", { preferCanvas: true }).setView(HOME, 6);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap &copy; CARTO &mdash; Lightning data &copy; <a href="https://www.blitzortung.org">Blitzortung.org</a> contributors'
-}).addTo(map);
+const attrib = '&copy; OpenStreetMap &copy; CARTO &mdash; Lightning data &copy; <a href="https://www.blitzortung.org">Blitzortung.org</a> contributors';
+const light = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: attrib });
+const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: attrib });
 
-L.circleMarker(HOME, { radius: 5, color: "#4cd9ff", weight: 2, fillColor: "#4cd9ff", fillOpacity: 0.6 })
+const map = L.map("map", { preferCanvas: true, layers: [light] }).setView(HOME, 8);
+L.control.layers({ "Light": light, "Dark": dark }, null, { position: "topleft" }).addTo(map);
+
+L.circleMarker(HOME, { radius: 6, color: "#0077cc", weight: 2, fillColor: "#33aaff", fillOpacity: 0.8 })
   .addTo(map).bindTooltip("Canandaigua, NY");
-L.circleMarker(SHOP, { radius: 5, color: "#7a8aa0", weight: 2, fillColor: "#7a8aa0", fillOpacity: 0.5 })
+L.circleMarker(SHOP, { radius: 5, color: "#667788", weight: 2, fillColor: "#8899aa", fillOpacity: 0.5 })
   .addTo(map).bindTooltip("Shop (Lakeville, MN)");
 
+// Distance rings around Canandaigua
+for (const mi of [10, 30, 60]) {
+  L.circle(HOME, {
+    radius: mi * MI_TO_M, color: "#0077cc", weight: 1, opacity: 0.45,
+    dashArray: "6 6", fill: false, interactive: false
+  }).addTo(map);
+  const latOff = (mi * MI_TO_M) / 111320; // ring's north edge
+  L.tooltip({ permanent: true, direction: "top", className: "ring-label", opacity: 0.65 })
+    .setLatLng([HOME[0] + latOff, HOME[1]])
+    .setContent(mi + " mi").addTo(map);
+}
+
 const renderer = L.canvas({ padding: 0.3 });
-// age buckets: [maxAgeMin, fill, radius, fillOpacity]
+// age buckets: [maxAgeMin, fill, radius, fillOpacity] — red/orange pops on light AND dark tiles
 const BUCKETS = [
-  [1,  "#ffffff", 5, 0.95],
-  [5,  "#ffd75e", 4, 0.8],
-  [10, "#ff8c3a", 3.5, 0.6],
-  [15, "#b04a2a", 3, 0.4],
+  [1,  "#ff2400", 6,   1.0],
+  [5,  "#ff7a00", 5,   0.9],
+  [15, "#cf8f1f", 4,   0.7],
+  [30, "#9b8468", 3.5, 0.45],
 ];
 function bucketFor(ageMs) {
   const m = ageMs / 60000;
@@ -80,8 +101,8 @@ function bucketFor(ageMs) {
   return -1;
 }
 
-const strikes = []; // { t, lat, lon, marker, bucket }
-let recentTimes = []; // strike arrival times for rate calc
+const strikes = []; // { t, lat, lon, marker, bucket, distMi }
+let recentTimes = [];
 
 function haversineMi(lat1, lon1, lat2, lon2) {
   const r = Math.PI / 180, R = 3958.8;
@@ -93,13 +114,20 @@ function haversineMi(lat1, lon1, lat2, lon2) {
 
 function addStrike(lat, lon) {
   const now = Date.now();
-  const b = 0;
-  const [, fill, radius, fillOpacity] = BUCKETS[b];
+  const [, fill, radius, fillOpacity] = BUCKETS[0];
   const marker = L.circleMarker([lat, lon], {
-    renderer, radius, stroke: false, fillColor: fill, fillOpacity
+    renderer, radius, fillColor: fill, fillOpacity,
+    stroke: true, color: "#551000", weight: 1, opacity: 0.5
   }).addTo(map);
-  strikes.push({ t: now, lat, lon, marker, bucket: b });
+  strikes.push({ t: now, lat, lon, marker, bucket: 0, distMi: haversineMi(HOME[0], HOME[1], lat, lon) });
   recentTimes.push(now);
+
+  // brief flash ring so fresh strikes catch the eye
+  const flash = L.circleMarker([lat, lon], {
+    renderer, radius: 14, fill: false, color: "#ff2400", weight: 2.5, opacity: 0.9
+  }).addTo(map);
+  setTimeout(() => map.removeLayer(flash), 900);
+
   if (strikes.length > MAX_STRIKES) {
     const s = strikes.shift();
     map.removeLayer(s.marker);
@@ -127,7 +155,8 @@ function decode(b) {
   return g.join("");
 }
 
-let ws = null, serverIdx = 0, reconnectDelay = 2000;
+let ws = null, serverIdx = 0, reconnectDelay = 2000, reconnectTimer = null;
+let lastMsgAt = Date.now();
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 
@@ -142,10 +171,12 @@ function connect() {
   try { ws = new WebSocket(url); } catch (e) { scheduleReconnect(); return; }
   ws.onopen = () => {
     reconnectDelay = 2000;
+    lastMsgAt = Date.now();
     setStatus(true, "live");
     ws.send(JSON.stringify({ a: 111 }));
   };
   ws.onmessage = (msg) => {
+    lastMsgAt = Date.now();
     try {
       const data = JSON.parse(decode(msg.data));
       if (typeof data.lat === "number" && typeof data.lon === "number") {
@@ -160,15 +191,33 @@ function connect() {
 function scheduleReconnect() {
   setStatus(false, "reconnecting…");
   serverIdx++;
-  setTimeout(connect, reconnectDelay);
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, reconnectDelay);
   reconnectDelay = Math.min(reconnectDelay * 2, 30000);
 }
 
+// Phones kill the socket when the browser is backgrounded — reconnect on wake.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && (!ws || ws.readyState >= 2)) {
+    clearTimeout(reconnectTimer);
+    reconnectDelay = 2000;
+    connect();
+  }
+});
+
+document.getElementById("since").textContent =
+  new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 connect();
 
-// Age strikes, prune, refresh HUD.
+// Age strikes, prune, watchdog, refresh HUD.
 setInterval(() => {
   const now = Date.now();
+
+  // The global feed never goes quiet — silence means a dead link (common after phone sleep).
+  if (ws && ws.readyState === 1 && now - lastMsgAt > 90000) {
+    try { ws.close(); } catch (e) {}
+  }
+
   while (strikes.length && now - strikes[0].t > MAX_AGE_MS) {
     map.removeLayer(strikes.shift().marker);
   }
@@ -184,11 +233,12 @@ setInterval(() => {
   document.getElementById("count").textContent = strikes.length;
   document.getElementById("rate").textContent = recentTimes.length + "/min";
 
-  let nearest = Infinity;
+  let nearest = Infinity, nearby = 0;
   for (const s of strikes) {
-    const d = haversineMi(HOME[0], HOME[1], s.lat, s.lon);
-    if (d < nearest) nearest = d;
+    if (s.distMi < nearest) nearest = s.distMi;
+    if (s.distMi <= NEARBY_MI) nearby++;
   }
+  document.getElementById("nearby").textContent = nearby;
   document.getElementById("nearest").textContent =
     nearest === Infinity ? "—" : Math.round(nearest).toLocaleString() + " mi";
 }, 5000);
