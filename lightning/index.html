@@ -34,6 +34,15 @@
   #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.35); }
   .ring-label { background: transparent; border: none; box-shadow: none; color: #0077cc; font: 10px system-ui, sans-serif; }
   .ring-label::before { display: none; }
+  .you-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #1e90ff; border: 3px solid #fff;
+    box-shadow: 0 0 6px rgba(0,0,0,0.5); cursor: grab;
+  }
+  .locate-btn {
+    background: #fff; width: 34px; height: 34px; display: block;
+    font-size: 18px; line-height: 34px; text-align: center; text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -45,6 +54,7 @@
   <div class="row"><span>Nearby (30 mi)</span><span class="val" id="nearby">0</span></div>
   <div class="row"><span>Nearest</span><span class="val" id="nearest">—</span></div>
   <div class="note">Live feed — shows strikes from <b><span id="since">…</span></b> onward (no history before you opened the page)</div>
+  <div class="note">Drag the blue dot to set “you”, or tap 📍 to use your GPS</div>
 </div>
 <div id="legend">
   <div><span class="sw" style="background:#ff2400"></span>&lt; 1 min</div>
@@ -55,8 +65,13 @@
 <script>
 "use strict";
 
-const HOME = [42.8745, -77.2886]; // Canandaigua, NY (Will's current spot)
+const DEFAULT_HOME = [42.8745, -77.2886]; // Canandaigua, NY — fallback only
 const SHOP = [44.6497, -93.2427]; // Lakeville, MN
+let home = DEFAULT_HOME;
+try {
+  const saved = JSON.parse(localStorage.getItem("lm_home"));
+  if (Array.isArray(saved) && saved.length === 2) home = saved;
+} catch (e) {}
 const MAX_AGE_MS = 30 * 60 * 1000;
 const MAX_STRIKES = 8000;
 const NEARBY_MI = 30;
@@ -67,25 +82,66 @@ const attrib = '&copy; OpenStreetMap &copy; CARTO &mdash; Lightning data &copy; 
 const light = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: attrib });
 const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: attrib });
 
-const map = L.map("map", { preferCanvas: true, layers: [light] }).setView(HOME, 8);
+const map = L.map("map", { preferCanvas: true, layers: [light] }).setView(home, 8);
 L.control.layers({ "Light": light, "Dark": dark }, null, { position: "topleft" }).addTo(map);
 
-L.circleMarker(HOME, { radius: 6, color: "#0077cc", weight: 2, fillColor: "#33aaff", fillOpacity: 0.8 })
-  .addTo(map).bindTooltip("Canandaigua, NY");
 L.circleMarker(SHOP, { radius: 5, color: "#667788", weight: 2, fillColor: "#8899aa", fillOpacity: 0.5 })
   .addTo(map).bindTooltip("Shop (Lakeville, MN)");
 
-// Distance rings around Canandaigua
-for (const mi of [10, 30, 60]) {
-  L.circle(HOME, {
-    radius: mi * MI_TO_M, color: "#0077cc", weight: 1, opacity: 0.45,
-    dashArray: "6 6", fill: false, interactive: false
-  }).addTo(map);
-  const latOff = (mi * MI_TO_M) / 111320; // ring's north edge
-  L.tooltip({ permanent: true, direction: "top", className: "ring-label", opacity: 0.65 })
-    .setLatLng([HOME[0] + latOff, HOME[1]])
-    .setContent(mi + " mi").addTo(map);
+// Draggable "you are here" dot + distance rings that follow it
+const ringGroup = L.layerGroup().addTo(map);
+const youMarker = L.marker(home, {
+  draggable: true, zIndexOffset: 1000,
+  icon: L.divIcon({ className: "", html: '<div class="you-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] })
+}).addTo(map).bindTooltip("You (drag me)");
+
+function drawRings() {
+  ringGroup.clearLayers();
+  for (const mi of [10, 30, 60]) {
+    L.circle(home, {
+      radius: mi * MI_TO_M, color: "#0077cc", weight: 1, opacity: 0.45,
+      dashArray: "6 6", fill: false, interactive: false
+    }).addTo(ringGroup);
+    const latOff = (mi * MI_TO_M) / 111320; // ring's north edge
+    L.tooltip({ permanent: true, direction: "top", className: "ring-label", opacity: 0.65 })
+      .setLatLng([home[0] + latOff, home[1]])
+      .setContent(mi + " mi").addTo(ringGroup);
+  }
 }
+
+function setHome(lat, lon, pan) {
+  home = [lat, lon];
+  try { localStorage.setItem("lm_home", JSON.stringify(home)); } catch (e) {}
+  youMarker.setLatLng(home);
+  drawRings();
+  for (const s of strikes) s.distMi = haversineMi(home[0], home[1], s.lat, s.lon);
+  if (pan) map.panTo(home);
+}
+
+youMarker.on("dragend", () => {
+  const p = youMarker.getLatLng();
+  setHome(p.lat, p.lng, false);
+});
+
+const LocateControl = L.Control.extend({
+  onAdd() {
+    const a = L.DomUtil.create("a", "locate-btn leaflet-bar");
+    a.href = "#"; a.textContent = "📍"; a.title = "Move the blue dot to my GPS location";
+    L.DomEvent.on(a, "click", (ev) => {
+      L.DomEvent.stop(ev);
+      if (!navigator.geolocation) { alert("No GPS available in this browser"); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => setHome(pos.coords.latitude, pos.coords.longitude, true),
+        err => alert("Couldn't get location: " + err.message),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+    return a;
+  }
+});
+new LocateControl({ position: "topleft" }).addTo(map);
+
+drawRings();
 
 const renderer = L.canvas({ padding: 0.3 });
 // age buckets: [maxAgeMin, fill, radius, fillOpacity] — red/orange pops on light AND dark tiles
@@ -119,7 +175,7 @@ function addStrike(lat, lon) {
     renderer, radius, fillColor: fill, fillOpacity,
     stroke: true, color: "#551000", weight: 1, opacity: 0.5
   }).addTo(map);
-  strikes.push({ t: now, lat, lon, marker, bucket: 0, distMi: haversineMi(HOME[0], HOME[1], lat, lon) });
+  strikes.push({ t: now, lat, lon, marker, bucket: 0, distMi: haversineMi(home[0], home[1], lat, lon) });
   recentTimes.push(now);
 
   // brief flash ring so fresh strikes catch the eye
