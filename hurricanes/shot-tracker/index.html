@@ -30,6 +30,23 @@
   .pill { background: var(--card2); border-radius: 999px; padding: 8px 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .steps { line-height: 1.7; font-size: .92rem; color: var(--ink2); padding-left: 22px; }
   .steps b { color: var(--ink); }
+  #roomIn { background: var(--card2); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 110px; font-size: .95rem; text-transform: uppercase; font-weight: 700; text-align: center; }
+
+  /* game screen (second iPad) */
+  #gameScr { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: none; flex-direction: column; padding: 12px; gap: 12px; overflow-y: auto; }
+  #gameScr.show { display: flex; }
+  .g-top { display: flex; align-items: center; gap: 10px; }
+  .g-status { font-size: .82rem; color: var(--ink3); }
+  .g-status.live { color: var(--good); font-weight: 700; }
+  .g-ready { border-radius: 14px; text-align: center; padding: 18px 10px; font-size: 2rem; font-weight: 900; letter-spacing: 1px; background: var(--card); border: 1px solid var(--line); }
+  .g-ready.go { background: #12331f; color: var(--good); border-color: var(--good); }
+  .g-ready.wait { background: #33280a; color: #ffd600; border-color: #7a6400; }
+  .g-last { text-align: center; padding: 8px 0 2px; }
+  .g-last .zone { font-size: 2.4rem; font-weight: 900; line-height: 1.15; }
+  .g-last .sub { color: var(--ink2); margin-top: 4px; }
+  .g-grids { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  .g-grids .zgrid { grid-template-columns: repeat(3, 84px); grid-auto-rows: 62px; }
+  .g-grids .zgrid div { font-size: 1.2rem; }
   .stage .msg {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--ink2); text-align: center; padding: 20px; font-size: .95rem; background: var(--card);
@@ -112,6 +129,12 @@
     <input type="file" id="mFile" accept="video/*" style="display:none">
     <button id="mDemo">&#127918; Demo</button>
   </div>
+  <div class="row">
+    <button id="mGame" style="font-size:1rem">&#127918;&#65039; Game screen <span style="color:var(--ink3);font-size:.8rem">(second iPad)</span></button>
+    <span class="grow"></span>
+    <label class="slider">Room <input id="roomIn" maxlength="12" value="CANES"></label>
+  </div>
+  <p class="hint">Two iPads: this one on <b>Camera</b> pointed at the target, the other one open on <b>Game screen</b> with the same room code — it shows READY, calls the shots, and lets J pick target zones from across the room.</p>
 
   <div class="panel">
     <h2>This Session</h2>
@@ -176,6 +199,36 @@
   </div>
 </div>
 
+<div id="gameScr">
+  <div class="g-top">
+    <button id="gameBack">&#8249; Done</button>
+    <span class="pill" id="gRoom">CANES</span>
+    <span class="g-status" id="gStatus">Connecting…</span>
+    <span class="grow"></span>
+    <button id="gVoiceBtn" class="on">&#128266;</button>
+  </div>
+  <div class="g-ready" id="gReady">Waiting for the camera iPad…</div>
+  <div class="g-last">
+    <div class="zone" id="gZone">—</div>
+    <div class="sub" id="gSub">Shots will show up here as they land.</div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v" id="gShots">0</div><div class="l">Shots</div></div>
+    <div class="stat"><div class="v" id="gAcc">–</div><div class="l">Called accuracy</div></div>
+    <div class="stat"><div class="v" id="gStreak">0</div><div class="l">Streak</div></div>
+  </div>
+  <div class="g-grids">
+    <div>
+      <div class="glabel">Call your shot</div>
+      <div class="zgrid" id="gCallGrid"></div>
+    </div>
+    <div>
+      <div class="glabel">Heat map</div>
+      <div class="zgrid" id="gHeatGrid"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 /* ================= state ================= */
@@ -208,12 +261,17 @@ const dctx = demoCv.getContext('2d');
 /* ================= persistence ================= */
 const LS = 'canes_shot_tracker_v1';
 function saveCfg() {
-  try { localStorage.setItem(LS, JSON.stringify({ corners, sens: $('sens').value, voiceOn })); } catch (e) {}
+  try { localStorage.setItem(LS, JSON.stringify({ corners, sens: $('sens').value, voiceOn, room: $('roomIn').value })); } catch (e) {}
 }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(LS));
-    if (c) { if (c.corners) corners = c.corners; if (c.sens) $('sens').value = c.sens; if (c.voiceOn === false) toggleVoice(); }
+    if (c) {
+      if (c.corners) corners = c.corners;
+      if (c.sens) $('sens').value = c.sens;
+      if (c.voiceOn === false) toggleVoice();
+      if (c.room) $('roomIn').value = c.room;
+    }
   } catch (e) {}
 }
 function sessionHistory() {
@@ -415,6 +473,7 @@ function commitHit(u, v) {
   renderStats(); renderLog(); renderHeat();
   flash(ZONES[zone] + (hit === true ? ' — nailed it!' : hit === false ? ` (called ${ZONES[called]})` : ''), hit);
   speak(hit === true ? `${ZONES[zone]}. Nailed it!` : ZONES[zone]);
+  pushState();
 }
 
 /* ================= feedback ui ================= */
@@ -555,8 +614,9 @@ function updateTrackBtn() {
 }
 $('trackBtn').onclick = () => {
   tracking = !tracking;
-  if (tracking) { state = 'armed'; lastHitAt = -1e9; prevGray = null; rebuildMask(); speak('Tracking on. Fire away!'); }
+  if (tracking) { state = 'armed'; lastHitAt = -1e9; prevGray = null; rebuildMask(); room = roomVal(); speak('Tracking on. Fire away!'); }
   updateTrackBtn();
+  pushState();
 };
 $('calBtn').onclick = () => { corners = [[.28,.22],[.72,.22],[.72,.72],[.28,.72]]; rebuildMask(); saveCfg(); };
 $('sens').oninput = saveCfg;
@@ -585,15 +645,139 @@ $('resetBtn').onclick = () => {
 /* zone grids */
 ZONES.forEach((z, i) => {
   const c = document.createElement('div'); c.title = z;
-  c.onclick = () => { targetZone = targetZone === i ? null : i; renderCall(); speak(targetZone != null ? 'Target: ' + z : 'Free shooting'); };
+  c.onclick = () => { targetZone = targetZone === i ? null : i; renderCall(); sendCall(targetZone); speak(targetZone != null ? 'Target: ' + z : 'Free shooting'); };
   $('callGrid').appendChild(c);
   const hd = document.createElement('div'); hd.title = z; hd.style.cursor = 'default';
   $('heatGrid').appendChild(hd);
 });
 [...$('callGrid').children].forEach((c, i) => c.textContent = ['↖','⬆','↗','⬅','◎','➡','↙','⬇','↘'][i]);
 
+/* ================= two-iPad sync (relay) ================= */
+const RELAY = 'https://script.google.com/macros/s/AKfycbxUvpGtejjSqm-nZXnH-F7RoO9V_4mv08R0w0rN6nR9pxJV4prmsgOr4y2Ok3TuDnGJ/exec';
+let room = 'CANES', lastCallAt = 0;
+function roomVal() { return ($('roomIn').value || 'CANES').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'CANES'; }
+
+async function pushState() {
+  if (!source) return;
+  const now = performance.now();
+  const body = {
+    fn: 'push', room,
+    state: {
+      seq: shots.length,
+      shots: shots.slice(-100),
+      target: targetZone,
+      tracking,
+      armed: state === 'armed',
+      readyInMs: (tracking && state !== 'armed' && lastHitAt > 0) ? Math.max(0, Math.round(CLEAR_MS - (now - lastHitAt))) : 0,
+      at: Date.now(),
+    },
+  };
+  try {
+    const r = await fetch(RELAY, { method: 'POST', body: JSON.stringify(body) });
+    const j = await r.json();
+    if (j.call && j.call.at > lastCallAt) { // game iPad called a zone
+      lastCallAt = j.call.at;
+      if (j.call.target !== targetZone) { targetZone = j.call.target; renderCall(); }
+    }
+  } catch (e) {}
+}
+setInterval(() => { if (tracking) pushState(); }, 3000);
+async function sendCall(t) {
+  lastCallAt = Date.now() + 6e4; // don't re-adopt our own echo for a minute
+  try { await fetch(RELAY, { method: 'POST', body: JSON.stringify({ fn: 'call', room, target: t }) }); } catch (e) {}
+  setTimeout(() => { lastCallAt = Date.now(); }, 3000);
+}
+
+/* ---- game screen (second iPad) ---- */
+let gameOn = false, gamePollT = null, gameLastSeq = null, gameReadyAt = 0, gameArmed = false, gameWasReady = false;
+function showGame() {
+  gameOn = true; room = roomVal(); $('gRoom').textContent = room;
+  $('gameScr').classList.add('show');
+  gameLastSeq = null; gameWasReady = false;
+  gamePoll(); gamePollT = setInterval(gamePoll, 1500);
+  setInterval(gameReadyTick, 250);
+}
+$('mGame').onclick = showGame;
+$('gameBack').onclick = () => { gameOn = false; $('gameScr').classList.remove('show'); clearInterval(gamePollT); };
+$('gVoiceBtn').onclick = () => { toggleVoice(); $('gVoiceBtn').classList.toggle('on', voiceOn); $('gVoiceBtn').innerHTML = voiceOn ? '&#128266;' : '&#128263;'; saveCfg(); };
+
+async function gamePoll() {
+  if (!gameOn) return;
+  let j;
+  try {
+    const r = await fetch(`${RELAY}?fn=state&room=${room}&cb=${Date.now()}`);
+    j = await r.json();
+  } catch (e) { $('gStatus').textContent = 'No connection — retrying…'; $('gStatus').classList.remove('live'); return; }
+  const st = j.state;
+  if (!st || Date.now() - st.at > 30000) {
+    $('gStatus').textContent = st ? 'Camera iPad went quiet…' : 'Waiting for the camera iPad…';
+    $('gStatus').classList.remove('live');
+    if (!st) return;
+  } else {
+    $('gStatus').textContent = st.tracking ? 'LIVE' : 'Connected — tracking is off';
+    $('gStatus').classList.toggle('live', !!st.tracking);
+  }
+  gameArmed = !!(st.tracking && st.armed);
+  gameReadyAt = Date.now() + (st.readyInMs || 0);
+
+  const arr = st.shots || [];
+  // stats + heat
+  $('gShots').textContent = st.seq ?? arr.length;
+  const called = arr.filter(s => s.called != null);
+  $('gAcc').textContent = called.length ? Math.round(100 * called.filter(s => s.hit).length / called.length) + '%' : '–';
+  let stk = 0;
+  for (let i = arr.length - 1; i >= 0; i--) { if (arr[i].called == null) continue; if (arr[i].hit) stk++; else break; }
+  $('gStreak').textContent = stk;
+  const counts = Array(9).fill(0); arr.forEach(s => counts[s.zone]++);
+  const max = Math.max(1, ...counts);
+  [...$('gHeatGrid').children].forEach((c, i) => {
+    c.textContent = counts[i] || '';
+    c.style.background = counts[i] ? `rgba(206,17,38,${.15 + .55*counts[i]/max})` : 'var(--card2)';
+  });
+  // target highlight (call key wins)
+  const tgt = j.call ? j.call.target : st.target;
+  [...$('gCallGrid').children].forEach((c, i) => c.classList.toggle('tgt', i === tgt));
+  // new shot announcement
+  const seq = st.seq ?? arr.length;
+  if (gameLastSeq != null && seq > gameLastSeq && arr.length) {
+    const s = arr[arr.length - 1];
+    $('gZone').textContent = (s.hit === true ? '✅ ' : s.hit === false ? '❌ ' : '🎯 ') + ZONES[s.zone];
+    $('gSub').textContent = `Shot #${seq}` + (s.called != null ? (s.hit ? ' — nailed the call!' : ` — called ${ZONES[s.called]}`) : '');
+    speak(s.hit === true ? `${ZONES[s.zone]}. Nailed it!` : ZONES[s.zone]);
+  }
+  gameLastSeq = seq;
+}
+function gameReadyTick() {
+  if (!gameOn) return;
+  const el = $('gReady');
+  if (gameArmed) {
+    el.textContent = '🟢 READY — FIRE!'; el.className = 'g-ready go';
+    if (!gameWasReady) { gameWasReady = true; if (gameLastSeq) speak('Ready!'); }
+  } else {
+    gameWasReady = false;
+    const rem = Math.ceil((gameReadyAt - Date.now()) / 1000);
+    if (rem > 0) { el.textContent = `⏳ CLEAR THE BAG… ${rem}`; el.className = 'g-ready wait'; }
+    else { el.textContent = '⏸ Waiting…'; el.className = 'g-ready'; }
+  }
+}
+// game call grid
+ZONES.forEach((z, i) => {
+  const c = document.createElement('div'); c.textContent = ['↖','⬆','↗','⬅','◎','➡','↙','⬇','↘'][i]; c.title = z;
+  c.onclick = () => {
+    const cur = c.classList.contains('tgt') ? null : i;
+    [...$('gCallGrid').children].forEach((x, k) => x.classList.toggle('tgt', k === cur));
+    sendCall(cur);
+    speak(cur != null ? 'Target: ' + z : 'Free shooting');
+  };
+  $('gCallGrid').appendChild(c);
+  const hd = document.createElement('div'); hd.title = z; hd.style.cursor = 'default';
+  $('gHeatGrid').appendChild(hd);
+});
+$('roomIn').onchange = () => { room = roomVal(); $('roomIn').value = room; $('gRoom').textContent = room; saveCfg(); };
+
 /* ================= boot ================= */
-loadCfg(); renderStats(); renderHeat(); renderCall(); renderHist();
+loadCfg(); room = roomVal(); $('gRoom').textContent = room;
+renderStats(); renderHeat(); renderCall(); renderHist();
 requestAnimationFrame(draw);
 if (new URLSearchParams(location.search).get('demo') === '1') {
   startDemo(); tracking = true; updateTrackBtn(); state = 'armed';
