@@ -20,9 +20,16 @@
   h1 { font-size: 1.15rem; }
   .tagline { color: var(--red); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
 
-  .stage { position: relative; margin-top: 14px; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid var(--line); }
+  /* full-screen live/camera screen */
+  #liveScr { position: fixed; inset: 0; background: #000; z-index: 50; display: none; flex-direction: column; }
+  #liveScr.show { display: flex; }
+  .stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
   video { display: none; }
-  #view { display: block; width: 100%; touch-action: none; }
+  #view { display: block; max-width: 100%; max-height: 100%; touch-action: none; }
+  .live-bar { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: var(--card); border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .pill { background: var(--card2); border-radius: 999px; padding: 8px 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .steps { line-height: 1.7; font-size: .92rem; color: var(--ink2); padding-left: 22px; }
+  .steps b { color: var(--ink); }
   .stage .msg {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--ink2); text-align: center; padding: 20px; font-size: .95rem; background: var(--card);
@@ -87,28 +94,24 @@
 
 <div class="wrap">
 
+  <div class="panel" style="margin-top:14px">
+    <h2>Directions</h2>
+    <ol class="steps">
+      <li>Tape a rectangle on the fridge (painter&rsquo;s tape) — or use the goal posts &amp; crossbar.</li>
+      <li>Tap <b>&#128247; Camera</b> below and prop the phone 6&ndash;10 ft back, facing the target.</li>
+      <li>Drag the <b style="color:var(--red)">red corner dots</b> onto the corners of your rectangle.</li>
+      <li>Want to call your shot? Tap a zone in <b>Call your shot</b> below first.</li>
+      <li>Hit <b>&#9654; Start tracking</b> and fire when you see the green <b style="color:var(--good)">&#9679; READY</b>.</li>
+      <li>After each shot it pauses <b>~7 seconds</b> while you grab the beanbag, then says <b>&ldquo;Ready!&rdquo;</b> out loud.</li>
+    </ol>
+  </div>
+
   <div class="row">
-    <button id="mCam">&#128247; Camera</button>
+    <button id="mCam" class="primary" style="font-size:1rem">&#128247; Camera</button>
     <label class="filebtn" for="mFile">&#127909; Video file</label>
     <input type="file" id="mFile" accept="video/*" style="display:none">
     <button id="mDemo">&#127918; Demo</button>
-    <span class="grow"></span>
-    <button id="voiceBtn" class="on" title="Voice callouts">&#128266;</button>
   </div>
-
-  <div class="stage">
-    <video id="vid" playsinline muted></video>
-    <canvas id="view" width="640" height="360"></canvas>
-    <div class="msg" id="msg">Pick an input above.<br><br>&#128247; <b>Camera</b> — prop the phone up facing the fridge/net.<br>&#127918; <b>Demo</b> — fake beanbags, no camera needed.</div>
-    <div class="banner" id="banner"></div>
-  </div>
-
-  <div class="row">
-    <button id="trackBtn" class="primary" disabled>&#9654; Start tracking</button>
-    <button id="calBtn" disabled>&#128205; Reset corners</button>
-    <label class="slider">Sensitivity <input type="range" id="sens" min="1" max="10" value="5"></label>
-  </div>
-  <p class="hint" style="margin-top:8px">Drag the <b style="color:var(--red)">red corner dots</b> onto the corners of your target (fridge rectangle, taped square, or the net). Then start tracking and let &rsquo;em fly. Stand off to the side so you&rsquo;re not in front of the target.</p>
 
   <div class="panel">
     <h2>This Session</h2>
@@ -155,6 +158,24 @@
   </footer>
 </div>
 
+<div id="liveScr">
+  <div class="stage">
+    <video id="vid" playsinline muted></video>
+    <canvas id="view" width="640" height="360"></canvas>
+    <div class="msg" id="msg" style="display:none"></div>
+    <div class="banner" id="banner"></div>
+  </div>
+  <div class="live-bar">
+    <button id="doneBtn">&#8249; Done</button>
+    <button id="trackBtn" class="primary" disabled>&#9654; Start tracking</button>
+    <button id="calBtn" disabled>&#128205;</button>
+    <label class="slider">Sens <input type="range" id="sens" min="1" max="10" value="5"></label>
+    <button id="voiceBtn" class="on" title="Voice callouts">&#128266;</button>
+    <span class="grow"></span>
+    <span class="pill"><span id="liveShots">0</span> shots</span>
+  </div>
+</div>
+
 <script>
 'use strict';
 /* ================= state ================= */
@@ -174,7 +195,8 @@ let shots = [];             // {zone,u,v,called,hit,t}
 let streak = 0;
 let Hinv = null, maskIdx = null, maskU = null, maskV = null;
 let prevGray = null;
-let state = 'armed', collectLeft = 0, best = null, quietFrames = 0, lastHitAt = 0;
+const CLEAR_MS = 7000; // post-shot lockout: time to walk in and grab the beanbag
+let state = 'armed', collectLeft = 0, best = null, quietFrames = 0, lastHitAt = -1e9;
 let hitMarks = [];          // fading markers {u,v,at}
 window.__shots = shots;     // test hook
 
@@ -258,6 +280,7 @@ function readyStage(w, h) {
   rebuildMask();
   $('msg').style.display = 'none';
   $('trackBtn').disabled = false; $('calBtn').disabled = false;
+  $('liveScr').classList.add('show');
 }
 async function startCam() {
   stopAll();
@@ -270,6 +293,7 @@ async function startCam() {
     source = 'cam'; setMode($('mCam'));
     readyStage(vid.videoWidth || 640, vid.videoHeight || 360);
   } catch (e) {
+    $('liveScr').classList.add('show');
     $('msg').innerHTML = 'Camera blocked or unavailable.<br>Check the browser&rsquo;s camera permission and try again.';
     $('msg').style.display = 'flex';
   }
@@ -346,7 +370,7 @@ function detect(now) {
 
   if (state === 'armed') {
     if (occl) { state = 'cooldown'; quietFrames = 0; }
-    else if (count >= onTh && now - lastHitAt > 700) {
+    else if (count >= onTh && now - lastHitAt > CLEAR_MS) {
       // impact = where motion last was before the object pauses (a throw stops
       // dead for a few frames at the wall/net; peak motion is mid-flight)
       state = 'collect'; collectLeft = 40;
@@ -371,9 +395,13 @@ function detect(now) {
         state = 'cooldown'; quietFrames = 0; best = null;
       }
     }
-  } else { // cooldown
-    if (count < onTh / 2) { if (++quietFrames >= 6 && now - lastHitAt > 700) state = 'armed'; }
-    else quietFrames = 0;
+  } else { // cooldown: wait out the lockout AND a still scene before re-arming
+    if (count < onTh / 2) {
+      if (++quietFrames >= 6 && now - lastHitAt > CLEAR_MS) {
+        state = 'armed';
+        if (lastHitAt > 0) speak('Ready!');
+      }
+    } else quietFrames = 0;
   }
 }
 
@@ -404,6 +432,7 @@ function speak(text) {
 }
 function renderStats() {
   $('stShots').textContent = shots.length;
+  $('liveShots').textContent = shots.length;
   const called = shots.filter(s => s.called != null);
   $('stAcc').textContent = called.length ? Math.round(100 * called.filter(s => s.hit).length / called.length) + '%' : '–';
   $('stStreak').textContent = streak;
@@ -476,6 +505,26 @@ function draw(now) {
       vctx.beginPath(); vctx.moveTo(x-8, y); vctx.lineTo(x+8, y); vctx.moveTo(x, y-8); vctx.lineTo(x, y+8); vctx.stroke();
     });
   }
+
+  // ready / clearing badge (bottom-right, readable from across the room)
+  if (tracking) {
+    let txt, col;
+    if (state === 'armed') { txt = '● READY'; col = '#4caf7d'; }
+    else {
+      const rem = Math.ceil((CLEAR_MS - (now - lastHitAt)) / 1000);
+      if (lastHitAt > 0 && rem > 0) { txt = '⏳ CLEAR… ' + rem; col = '#ffd600'; }
+      else { txt = '● HOLD'; col = '#ffd600'; }
+    }
+    vctx.font = '800 26px -apple-system, Segoe UI, Arial, sans-serif';
+    const tw = vctx.measureText(txt).width;
+    const bx = view.width - tw - 34, by = view.height - 52;
+    vctx.fillStyle = 'rgba(13,15,18,.8)';
+    vctx.beginPath();
+    if (vctx.roundRect) vctx.roundRect(bx, by, tw + 24, 40, 10); else vctx.rect(bx, by, tw + 24, 40);
+    vctx.fill();
+    vctx.fillStyle = col;
+    vctx.fillText(txt, bx + 12, by + 29);
+  }
 }
 
 /* ================= corner dragging ================= */
@@ -506,13 +555,19 @@ function updateTrackBtn() {
 }
 $('trackBtn').onclick = () => {
   tracking = !tracking;
-  if (tracking) { state = 'armed'; prevGray = null; rebuildMask(); speak('Tracking on. Fire away!'); }
+  if (tracking) { state = 'armed'; lastHitAt = -1e9; prevGray = null; rebuildMask(); speak('Tracking on. Fire away!'); }
   updateTrackBtn();
 };
 $('calBtn').onclick = () => { corners = [[.28,.22],[.72,.22],[.72,.72],[.28,.72]]; rebuildMask(); saveCfg(); };
 $('sens').oninput = saveCfg;
 $('mCam').onclick = startCam;
 $('mDemo').onclick = startDemo;
+$('doneBtn').onclick = () => {
+  stopAll(); source = null;
+  $('liveScr').classList.remove('show');
+  $('trackBtn').disabled = true; $('calBtn').disabled = true;
+  renderStats(); renderLog(); renderHeat(); // session carries over to the setup screen
+};
 $('mFile').onchange = e => { if (e.target.files[0]) startFile(e.target.files[0]); };
 function toggleVoice() { voiceOn = !voiceOn; $('voiceBtn').classList.toggle('on', voiceOn); $('voiceBtn').innerHTML = voiceOn ? '&#128266;' : '&#128263;'; }
 $('voiceBtn').onclick = () => { toggleVoice(); saveCfg(); };
