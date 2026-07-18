@@ -49,10 +49,10 @@
 <div id="map"></div>
 <div id="hud">
   <div><span id="status-dot"></span><span id="status-text">connecting…</span></div>
-  <div class="row"><span>Strikes shown</span><span class="val" id="count">0</span></div>
-  <div class="row"><span>Rate (global)</span><span class="val" id="rate">0/min</span></div>
+  <div class="row"><span>In view</span><span class="val" id="inview">0</span></div>
   <div class="row"><span>Nearby (30 mi)</span><span class="val" id="nearby">0</span></div>
   <div class="row"><span>Nearest</span><span class="val" id="nearest">—</span></div>
+  <div class="row" style="color:#999"><span>Whole world</span><span id="count" style="font-variant-numeric:tabular-nums">0</span></div>
   <div class="note">Live feed — shows strikes from <b><span id="since">…</span></b> onward (no history before you opened the page)</div>
   <div class="note">Drag the blue dot to set “you”, or tap 📍 to use your GPS</div>
 </div>
@@ -158,7 +158,6 @@ function bucketFor(ageMs) {
 }
 
 const strikes = []; // { t, lat, lon, marker, bucket, distMi }
-let recentTimes = [];
 
 function haversineMi(lat1, lon1, lat2, lon2) {
   const r = Math.PI / 180, R = 3958.8;
@@ -176,7 +175,6 @@ function addStrike(lat, lon) {
     stroke: true, color: "#551000", weight: 1, opacity: 0.5
   }).addTo(map);
   strikes.push({ t: now, lat, lon, marker, bucket: 0, distMi: haversineMi(home[0], home[1], lat, lon) });
-  recentTimes.push(now);
 
   // brief flash ring so fresh strikes catch the eye
   const flash = L.circleMarker([lat, lon], {
@@ -265,6 +263,22 @@ document.getElementById("since").textContent =
   new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 connect();
 
+function updateHud() {
+  const bounds = map.getBounds();
+  let nearest = Infinity, nearby = 0, inView = 0;
+  for (const s of strikes) {
+    if (s.distMi < nearest) nearest = s.distMi;
+    if (s.distMi <= NEARBY_MI) nearby++;
+    if (bounds.contains([s.lat, s.lon])) inView++;
+  }
+  document.getElementById("inview").textContent = inView;
+  document.getElementById("nearby").textContent = nearby;
+  document.getElementById("count").textContent = strikes.length;
+  document.getElementById("nearest").textContent =
+    nearest === Infinity ? "—" : Math.round(nearest).toLocaleString() + " mi";
+}
+map.on("moveend", updateHud);
+
 // Age strikes, prune, watchdog, refresh HUD.
 setInterval(() => {
   const now = Date.now();
@@ -285,18 +299,7 @@ setInterval(() => {
       s.marker.setStyle({ fillColor: fill, fillOpacity, radius });
     }
   }
-  recentTimes = recentTimes.filter(t => now - t < 60000);
-  document.getElementById("count").textContent = strikes.length;
-  document.getElementById("rate").textContent = recentTimes.length + "/min";
-
-  let nearest = Infinity, nearby = 0;
-  for (const s of strikes) {
-    if (s.distMi < nearest) nearest = s.distMi;
-    if (s.distMi <= NEARBY_MI) nearby++;
-  }
-  document.getElementById("nearby").textContent = nearby;
-  document.getElementById("nearest").textContent =
-    nearest === Infinity ? "—" : Math.round(nearest).toLocaleString() + " mi";
+  updateHud();
 }, 5000);
 </script>
 </body>
