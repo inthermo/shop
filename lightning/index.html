@@ -43,6 +43,18 @@
     background: #fff; width: 34px; height: 34px; display: block;
     font-size: 18px; line-height: 34px; text-align: center; text-decoration: none;
   }
+  #radar-ctl {
+    position: absolute; bottom: 22px; left: 10px; z-index: 1000;
+    background: rgba(255, 255, 255, 0.92); color: #333;
+    font: 12px system-ui, sans-serif; padding: 6px 10px; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    display: flex; align-items: center; gap: 8px;
+  }
+  #radar-play {
+    border: none; background: #eee; border-radius: 6px; width: 30px; height: 26px;
+    font-size: 13px; cursor: pointer;
+  }
+  #radar-time { font-variant-numeric: tabular-nums; min-width: 105px; }
 </style>
 </head>
 <body>
@@ -55,6 +67,11 @@
   <div class="row" style="color:#999"><span>Whole world</span><span id="count" style="font-variant-numeric:tabular-nums">0</span></div>
   <div class="note">Live feed — shows strikes from <b><span id="since">…</span></b> onward (no history before you opened the page)</div>
   <div class="note">Drag the blue dot to set “you”, or tap 📍 to use your GPS</div>
+</div>
+<div id="radar-ctl">
+  <button id="radar-play" title="Play/pause radar animation">⏸</button>
+  <span>Radar</span>
+  <span id="radar-time">loading…</span>
 </div>
 <div id="legend">
   <div><span class="sw" style="background:#ff2400"></span>&lt; 1 min</div>
@@ -83,7 +100,7 @@ const light = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager
 const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: attrib });
 
 const map = L.map("map", { preferCanvas: true, layers: [light] }).setView(home, 8);
-L.control.layers({ "Light": light, "Dark": dark }, null, { position: "topleft" }).addTo(map);
+const layersCtl = L.control.layers({ "Light": light, "Dark": dark }, null, { position: "topleft" }).addTo(map);
 
 L.circleMarker(SHOP, { radius: 5, color: "#667788", weight: 2, fillColor: "#8899aa", fillOpacity: 0.5 })
   .addTo(map).bindTooltip("Shop (Lakeville, MN)");
@@ -142,6 +159,48 @@ const LocateControl = L.Control.extend({
 new LocateControl({ position: "topleft" }).addTo(map);
 
 drawRings();
+
+// --- Animated precipitation radar (RainViewer free public API, no key) ---
+const radarGroup = L.layerGroup().addTo(map);
+layersCtl.addOverlay(radarGroup, "Radar");
+let radarFrames = [], radarLayers = [], radarIdx = 0, radarPlaying = true;
+const radarTimeEl = document.getElementById("radar-time");
+const radarPlayBtn = document.getElementById("radar-play");
+
+function showRadarFrame(i) {
+  if (!radarFrames.length) return;
+  radarIdx = ((i % radarFrames.length) + radarFrames.length) % radarFrames.length;
+  radarLayers.forEach((l, k) => l.setOpacity(k === radarIdx ? 0.65 : 0));
+  const f = radarFrames[radarIdx];
+  radarTimeEl.textContent =
+    new Date(f.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) +
+    (f.forecast ? " (forecast)" : "");
+}
+
+async function loadRadar() {
+  try {
+    const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+    const j = await res.json();
+    const frames = [...j.radar.past, ...j.radar.nowcast.map(f => Object.assign({}, f, { forecast: true }))];
+    radarGroup.clearLayers();
+    radarLayers = frames.map(f => L.tileLayer(
+      j.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png",
+      { opacity: 0, maxZoom: 19, zIndex: 5 }
+    ).addTo(radarGroup));
+    radarFrames = frames;
+    showRadarFrame(j.radar.past.length - 1); // start on the latest real frame
+  } catch (e) {
+    radarTimeEl.textContent = "unavailable";
+  }
+}
+
+radarPlayBtn.addEventListener("click", () => {
+  radarPlaying = !radarPlaying;
+  radarPlayBtn.textContent = radarPlaying ? "⏸" : "▶";
+});
+setInterval(() => { if (radarPlaying && radarFrames.length) showRadarFrame(radarIdx + 1); }, 700);
+loadRadar();
+setInterval(loadRadar, 5 * 60 * 1000); // fresh frames every 5 min
 
 const renderer = L.canvas({ padding: 0.3 });
 // age buckets: [maxAgeMin, fill, radius, fillOpacity] — red/orange pops on light AND dark tiles
