@@ -763,13 +763,35 @@
       line-height: 1;
     }
     .fab:active { background: #c1121f; transform: scale(0.94); }
+
+    /* Pickups tab */
+    #page-pickups { max-width: 1100px; }
+    .pu-chip {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .pu-PENDING   { background: #fef3c7; color: #92400e; }
+    .pu-OVERDUE   { background: #fee2e2; color: #b91c1c; }
+    .pu-RECEIVED  { background: #dcfce7; color: #15803d; }
+    .pu-CANCELLED, .pu-DONE, .pu-TEST { background: #e5e7eb; color: #6b7280; }
+    .pu-summary { color: #374151; white-space: pre-line; }
+    .pu-note    { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+    .pu-btn {
+      border: 1.5px solid #d1d5db; background: #fff; border-radius: 8px;
+      padding: 8px 12px; font-size: 13px; font-weight: 600; color: #374151;
+      cursor: pointer; margin: 2px 4px 2px 0; white-space: nowrap;
+    }
+    .pu-btn:active { background: #f3f4f6; }
+    .pu-btn-cancel { border-color: #fca5a5; color: #b91c1c; }
+    .pu-btn-done   { border-color: #86efac; color: #15803d; }
   </style>
 </head>
 <body>
 
 <div class="tab-bar">
-  <button class="tab-btn"        id="tab-intake" onclick="switchTab('intake')">Receive</button>
-  <button class="tab-btn active" id="tab-log"    onclick="switchTab('log')">Today's Log</button>
+  <button class="tab-btn"        id="tab-intake"  onclick="switchTab('intake')">Receive</button>
+  <button class="tab-btn active" id="tab-log"     onclick="switchTab('log')">Today's Log</button>
+  <button class="tab-btn"        id="tab-pickups" onclick="switchTab('pickups')">Pickups</button>
 </div>
 
 <!-- ========== INTAKE PAGE ========== -->
@@ -898,6 +920,23 @@
   <div id="logContent" class="loading-msg">Loading…</div>
 </div>
 
+<!-- ========== PICKUPS PAGE — pickup requests the SMS agent texted a driver about, ==========
+     reconciled against receiving. Tap ✕ to dismiss noise (e.g. TCPC standing pickups). -->
+<div class="page" id="page-pickups">
+  <div class="log-toolbar">
+    <select id="puFilterStatus" class="log-filter-sel" onchange="renderPickups()">
+      <option value="open">Open (pending + overdue)</option>
+      <option value="all">All</option>
+      <option value="PENDING">Pending</option>
+      <option value="OVERDUE">Overdue</option>
+      <option value="RECEIVED">Received</option>
+      <option value="CANCELLED">Cancelled</option>
+    </select>
+    <button class="log-refresh" onclick="loadPickups()" title="Refresh">↻</button>
+  </div>
+  <div id="pickupsContent" class="loading-msg">Loading…</div>
+</div>
+
 <button class="fab" id="fab" onclick="switchTab('intake')" title="New receiving entry">+</button>
 
 <div class="toast" id="toast"></div>
@@ -945,7 +984,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-16b';
+var APP_VERSION = '2026-07-22a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -1133,11 +1172,12 @@ function selectTopCustomer(fullName) {
 // TABS
 // =====================================================================
 function switchTab(tab) {
-  ['intake', 'log'].forEach(function (id) {
+  ['intake', 'log', 'pickups'].forEach(function (id) {
     document.getElementById('tab-' + id).classList.toggle('active', id === tab);
     document.getElementById('page-' + id).classList.toggle('active', id === tab);
   });
   document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
+  if (tab === 'pickups') loadPickups();
   if (tab === 'log') {
     // The log was baked into bootstrap and already rendered, so opening the tab is
     // instant. Kick a silent background refresh (no "Loading…" wipe) so it stays current.
@@ -1924,6 +1964,80 @@ function jumpToLogDate() {
 // =====================================================================
 // UTILS
 // =====================================================================
+// ---------------------------------------------------------------------
+// PICKUPS TAB — the "Pickup Requests" audit log the Pickup SMS agent writes to the
+// Tracker. Shop floor can dismiss noise (✕ Not a pickup — e.g. TCPC standing pickups
+// that don't need a truck dispatched) or hand-close a request (✓ Done). The 4 PM
+// reconciler only touches PENDING/OVERDUE rows, so anything set here sticks.
+// ---------------------------------------------------------------------
+var _PICKUPS = [];
+
+function loadPickups(silent) {
+  if (!silent) document.getElementById('pickupsContent').innerHTML = '<div class="loading-msg">Loading…</div>';
+  call('getPickupRequests', { days: 30 }).then(function (res) {
+    if (!res.ok) {
+      document.getElementById('pickupsContent').innerHTML =
+        '<div class="log-empty">Could not load pickups: ' + esc(res.error || '?') + '</div>';
+      return;
+    }
+    _PICKUPS = res.requests || [];
+    renderPickups();
+  }).catch(function (e) {
+    document.getElementById('pickupsContent').innerHTML = '<div class="log-empty">Network error: ' + esc(String(e)) + '</div>';
+  });
+}
+
+function renderPickups() {
+  var filter = document.getElementById('puFilterStatus').value;
+  var rows = _PICKUPS.filter(function (r) {
+    var st = (r.status || '').toUpperCase();
+    if (filter === 'all')  return true;
+    if (filter === 'open') return st === 'PENDING' || st === 'OVERDUE';
+    return st === filter;
+  });
+  if (!rows.length) {
+    document.getElementById('pickupsContent').innerHTML =
+      '<div class="log-empty">No pickup requests here.<br><span style="font-size:13px">Every pickup the SMS agent texts a driver about shows up on this tab.</span></div>';
+    return;
+  }
+  var html = rows.map(function (r) {
+    var st = (r.status || '').toUpperCase();
+    var actionable = st === 'PENDING' || st === 'OVERDUE';
+    var actions = actionable
+      ? '<button class="pu-btn pu-btn-cancel" onclick="setPickupStatus(' + r.row + ',\'CANCELLED\')">✕ Not a pickup</button>'
+        + '<button class="pu-btn pu-btn-done" onclick="setPickupStatus(' + r.row + ',\'DONE\')">✓ Done</button>'
+      : '<button class="pu-btn" onclick="setPickupStatus(' + r.row + ',\'PENDING\')">↩ Reopen</button>';
+    return '<tr' + (actionable ? '' : ' class="done"') + '>'
+      + '<td class="log-col-date">' + esc(r.requested) + (r.pickupDay ? '<div class="log-time">pickup ' + esc(r.pickupDay) + '</div>' : '') + '</td>'
+      + '<td class="log-col-customer">' + esc(r.customer) + '</td>'
+      + '<td><div class="pu-summary">' + esc(r.summary) + '</div>'
+      + (r.note ? '<div class="pu-note">' + esc(r.note) + '</div>' : '') + '</td>'
+      + '<td><span class="pu-chip pu-' + esc(st) + '">' + esc(st) + '</span></td>'
+      + '<td>' + actions + '</td>'
+      + '</tr>';
+  }).join('');
+  document.getElementById('pickupsContent').innerHTML =
+    '<div class="log-table-wrap"><table class="log-table">'
+    + '<thead><tr><th>Requested</th><th>Customer</th><th>Request</th><th>Status</th><th></th></tr></thead>'
+    + '<tbody>' + html + '</tbody></table></div>';
+}
+
+function setPickupStatus(row, status) {
+  var labels = { CANCELLED: 'Marked as not a pickup', DONE: 'Marked done', PENDING: 'Reopened' };
+  // Optimistic flip so the tap feels instant on the iPad; reload confirms.
+  for (var i = 0; i < _PICKUPS.length; i++) {
+    if (_PICKUPS[i].row === row) _PICKUPS[i].status = status;
+  }
+  renderPickups();
+  call('setPickupStatus', { row: row, status: status, note: (labels[status] || status) + ' from Receiving tool' })
+    .then(function (res) {
+      if (!res.ok) { showToast('⚠️ Update failed: ' + (res.error || '?')); loadPickups(true); return; }
+      showToast((labels[status] || status) + ' ✓');
+      loadPickups(true);
+    })
+    .catch(function () { showToast('⚠️ Network error — not saved'); loadPickups(true); });
+}
+
 function showToast(msg, ms) {
   var t = document.getElementById('toast');
   t.textContent = msg;
