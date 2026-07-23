@@ -658,6 +658,21 @@
     .snap-po-btn:disabled { background: #f3f4f6; color: #9ca3af; border-color: #d1d5db; cursor: default; }
 
     /* ---- CAMERA OVERLAY ---- */
+    .cam-note {
+      /* Per-customer photo instruction (from the staff note) shown while shooting,
+         e.g. Dalsin: packing slip, not the bill of lading. */
+      display: none;
+      background: #fbbf24;
+      color: #1f2937;
+      font-size: 19px;
+      font-weight: 700;
+      text-align: center;
+      padding: 12px 18px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      max-width: 96vw;
+    }
+    .cam-note.show { display: block; }
     .cam-overlay {
       display: none;
       position: fixed;
@@ -800,6 +815,7 @@
   <!-- Camera overlay (getUserMedia). Served top-level on GitHub Pages, not inside the Apps Script
        iframe, so the camera permission is granted here — unlike the old HtmlService page. -->
   <div class="cam-overlay" id="camOverlay">
+    <div class="cam-note" id="camNote"></div>
     <video class="cam-video" id="camVideo" autoplay playsinline muted></video>
     <div class="cam-controls">
       <div class="cam-bottom-row">
@@ -984,7 +1000,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-22a';
+var APP_VERSION = '2026-07-23a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
@@ -2061,7 +2077,22 @@ function pad2(n) { return n < 10 ? '0' + n : String(n); }
 // =====================================================================
 var _camStream = null;
 
+// If the customer's staff note talks about what to photograph (packing slip,
+// bill of lading, …), surface it inside the camera view at the moment it matters.
+function updateCamNote() {
+  var note = selectedCust && (selectedCust.staffNote || '').trim();
+  var el = document.getElementById('camNote');
+  if (note && /photo|picture|packing slip|bill of lading|\bBOL\b/i.test(note)) {
+    el.textContent = note;
+    el.classList.add('show');
+  } else {
+    el.textContent = '';
+    el.classList.remove('show');
+  }
+}
+
 function triggerPoCamera() {
+  updateCamNote();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     // Browser doesn't support getUserMedia — fall back to native camera/file picker
     document.getElementById('poPhotoInput').click();
