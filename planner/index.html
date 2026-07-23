@@ -64,6 +64,17 @@
     }
     .stoprow .mv:active { background: #c8cdd8; }
     .stops .note { font-size: 11.5px; color: #9098a8; margin-top: 4px; }
+    .stops .addstop {
+      font-size: 12.5px; font-weight: 600; padding: 6px 10px; margin-top: 6px;
+      border: 1px dashed #9098a8; border-radius: 8px; cursor: pointer;
+      color: #374151; background: transparent;
+    }
+    .stops .addstop:active { opacity: .7; }
+    #pop .addc {
+      display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 600;
+      padding: 8px 10px; margin-top: 6px; border: none; border-radius: 8px;
+      cursor: pointer; color: #fff;
+    }
 
     /* ---- tray ---- */
     .tray {
@@ -250,11 +261,18 @@ function buildBoard(d) {
       });
     }
 
-    // stop order: remembered order first (kept only if still known), then anyone new
-    var stops = (r.stops || []).filter(function (nm) { return custs[nm]; });
-    Object.keys(custs).forEach(function (nm) { if (stops.indexOf(nm) === -1) stops.push(nm); });
+    // Only customers with racks on hand (tiles) show as stops — zero-count route
+    // customers cluttered every run. They stay one tap away via "+ Add customer".
+    var tiled = {};
+    tray.forEach(function (t) { if (t.customer) tiled[t.customer] = 1; });
+    rows.forEach(function (rw) { rw.forEach(function (t) { if (t.customer) tiled[t.customer] = 1; }); });
 
-    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, tray: tray, rows: rows };
+    // stop order: remembered order first (kept only if still known), then anyone new
+    var stops = (r.stops || []).filter(function (nm) { return custs[nm] && tiled[nm]; });
+    Object.keys(custs).forEach(function (nm) { if (tiled[nm] && stops.indexOf(nm) === -1) stops.push(nm); });
+    var hidden = Object.keys(custs).filter(function (nm) { return !tiled[nm]; }).sort();
+
+    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows };
     runOrder.push(r.key);
   });
 }
@@ -303,6 +321,9 @@ function render() {
             + '<button class="mv dn" data-run="' + esc(rk) + '" data-i="' + i + '">▼</button>'
             + '</div>';
     });
+    if ((b.hidden || []).length) {
+      html += '<button class="addstop" data-run="' + esc(rk) + '">+ Add customer (' + b.hidden.length + ' with no racks)</button>';
+    }
     html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin, PU=pickup only.</div></div>';
 
     // tray
@@ -607,11 +628,39 @@ document.getElementById('root').addEventListener('click', function (e) {
   }
   var snm = t.closest ? t.closest('.snm') : null;
   if (snm) { openPop(snm.getAttribute('data-run'), snm.getAttribute('data-nm'), e.clientX, e.clientY); return; }
+  var addstop = t.closest ? t.closest('.addstop') : null;
+  if (addstop) { openAddPop(addstop.getAttribute('data-run'), e.clientX, e.clientY); return; }
 });
+
+// "+ Add customer" chooser: lists this run's scheduled customers with no racks on hand.
+function openAddPop(rk, x, y) {
+  var b = board[rk];
+  var h = '<b>Add customer</b>';
+  (b.hidden || []).forEach(function (nm) {
+    h += '<button class="addc" style="background:' + b.customers[nm].color + '" data-run="' + esc(rk) + '" data-nm="' + esc(nm) + '">' + esc(b.customers[nm].short) + '</button>';
+  });
+  popCtx = null;
+  var pop = document.getElementById('pop');
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  var w = pop.offsetWidth, ph = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(y + 14, window.innerHeight - ph - 8)) + 'px';
+}
 
 document.getElementById('pop').addEventListener('click', function (e) {
   var pm = e.target.closest ? e.target.closest('.pm') : null;
   if (pm && popCtx) adjType(popCtx.rk, popCtx.nm, pm.getAttribute('data-ty'), parseInt(pm.getAttribute('data-d'), 10));
+  var addc = e.target.closest ? e.target.closest('.addc') : null;
+  if (addc) {
+    var rk = addc.getAttribute('data-run'), nm = addc.getAttribute('data-nm');
+    var b = board[rk];
+    b.hidden = (b.hidden || []).filter(function (n) { return n !== nm; });
+    if (b.stops.indexOf(nm) === -1) b.stops.push(nm);
+    b.tray.push(mkTile(nm, 'rack'));   // seed one rack; crew adjusts in the editor
+    render(); scheduleSave(); scheduleStopsSave(rk);
+    openPop(rk, nm, e.clientX, e.clientY);
+  }
 });
 document.addEventListener('pointerdown', function (e) {
   if (!e.target.closest) return;
