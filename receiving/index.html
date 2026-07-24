@@ -156,6 +156,12 @@
     }
     .customer-badge.show { display: flex; }
     .badge-name { flex: 1; }
+    .badge-by {
+      font-size: 14px; font-weight: 700; color: #2563eb; background: #eff6ff;
+      border: 1px solid #bfdbfe; border-radius: 8px; padding: 3px 10px;
+      margin-right: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .badge-by:empty { display: none; }
     .badge-clear {
       background: none;
       border: none;
@@ -442,6 +448,12 @@
     }
     .oo-box h3 { font-size: 20px; margin-bottom: 10px; }
     .oo-box p { font-size: 16px; color: #4b5563; line-height: 1.45; margin-bottom: 20px; }
+    .initials-input {
+      display: block; margin: 0 auto 20px; width: 140px; padding: 10px;
+      font-size: 30px; font-weight: 700; text-align: center; text-transform: uppercase;
+      letter-spacing: 6px; border: 2px solid #d1d5db; border-radius: 12px; outline: none;
+    }
+    .initials-input:focus { border-color: #2563eb; }
     .oo-btn {
       width: 100%;
       padding: 16px;
@@ -849,6 +861,7 @@
 
   <div class="customer-badge" id="customerBadge">
     <span class="badge-name" id="badgeName"></span>
+    <span class="badge-by" id="badgeBy" onclick="askInitials()" title="Change initials"></span>
     <button class="badge-clear" onclick="clearCustomer()" title="Change customer">✕</button>
   </div>
 
@@ -966,6 +979,18 @@
   </div>
 </div>
 
+<div class="oo-overlay" id="initialsOverlay">
+  <div class="oo-box">
+    <h3>✏️ Who's receiving?</h3>
+    <p>Enter your initials so we know who logged this entry.</p>
+    <input class="initials-input" id="initialsInput" type="text" maxlength="4"
+           placeholder="ABC" autocomplete="off" autocorrect="off" autocapitalize="characters"
+           spellcheck="false" onkeydown="if(event.key==='Enter')initialsOk()">
+    <button class="oo-btn oo-cancel" onclick="initialsCancel()">Cancel</button>
+    <button class="oo-btn oo-yes" onclick="initialsOk()">Continue</button>
+  </div>
+</div>
+
 <div class="oo-overlay" id="addCustOverlay">
   <div class="oo-box">
     <h3>&#10133; Add new customer</h3>
@@ -1000,9 +1025,10 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-07-23a';
+var APP_VERSION = '2026-07-24a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
+var entryInitials   = '';   // who's entering — asked right after customer selection
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
 
 // A customer whose instruction note asks for a PO (e.g. "Write PO# from paperwork")
@@ -1463,10 +1489,42 @@ function selectCustomer(name) {
   document.getElementById('submitBtn').style.display = 'block';
 
   renderItemList();
+
+  // Ask who's entering BEFORE any parts get keyed in. The shared iPad changes
+  // hands through the day, so this is per-entry, prefilled with the last initials.
+  askInitials();
+}
+
+// ---- Initials prompt (who's entering) ----
+function askInitials() {
+  var inp = document.getElementById('initialsInput');
+  inp.value = entryInitials || localStorage.getItem('riInitials') || '';
+  document.getElementById('initialsOverlay').classList.add('visible');
+  setTimeout(function () { inp.focus(); }, 50);
+}
+
+function initialsOk() {
+  var val = document.getElementById('initialsInput').value.trim().toUpperCase();
+  if (val.length < 2) { showToast('Enter your initials (2+ letters)', 3000); return; }
+  entryInitials = val;
+  try { localStorage.setItem('riInitials', val); } catch (e) {}
+  document.getElementById('initialsOverlay').classList.remove('visible');
+  var by = document.getElementById('badgeBy');
+  by.textContent = '✏️ ' + val;
+  by.style.display = '';
+}
+
+function initialsCancel() {
+  document.getElementById('initialsOverlay').classList.remove('visible');
+  // No initials = no entry — back out to the customer picker.
+  if (!entryInitials) clearCustomer();
 }
 
 function clearCustomer() {
   selectedCust = null;
+  entryInitials = '';
+  document.getElementById('badgeBy').textContent = '';
+  document.getElementById('initialsOverlay').classList.remove('visible');
   itemRows = [];
   openOrders = [];
   selectedOrderIdxs = [];
@@ -1744,6 +1802,7 @@ function updateFromSelectedOrders() {
 // =====================================================================
 function onSubmit(skipOpenOrderCheck) {
   if (!selectedCust) { showToast('Select a customer first', 3000); return; }
+  if (!entryInitials) { askInitials(); return; }
 
   // Open orders shown but none selected → confirm before creating a new PO
   if (!skipOpenOrderCheck && openOrders.length && !selectedOrderIdxs.length) {
@@ -1774,7 +1833,7 @@ function onSubmit(skipOpenOrderCheck) {
   btn.disabled = true;
   btn.textContent = 'Submitting…';
   var itemNames = activeRows.map(function (r) { return r.name; });
-  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames })
+  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames, by: entryInitials })
     .then(function (result) {
       btn.disabled = false; btn.textContent = 'Submit';
       if (result && result.ok) {
@@ -1837,7 +1896,8 @@ function submitMultipleOrders() {
       description: lines.length ? lines.join(', ') : 'Received',
       poNum:       o.po_number,
       note:        note,
-      items:       itemNames
+      items:       itemNames,
+      by:          entryInitials
     };
   });
 
@@ -1913,7 +1973,8 @@ function renderLog(result) {
       + ' data-cust="' + esc(String(e.customer).toLowerCase()) + '"'
       + ' data-done="' + (e.done ? '1' : '0') + '">'
       + '<td class="log-col-date">' + esc(fmtShortDate(e.date))
-        + (e.time ? '<div class="log-time">' + esc(e.time) + '</div>' : '') + '</td>'
+        + (e.time ? '<div class="log-time">' + esc(e.time) + '</div>' : '')
+        + (e.by ? '<div class="log-time">by ' + esc(e.by) + '</div>' : '') + '</td>'
       + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
       + '<td class="log-col-po">' + po + '</td>'
       + '<td class="log-col-items">' + esc(e.description) + '</td>'
