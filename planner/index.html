@@ -232,6 +232,7 @@ function buildBoard(d) {
 
   firstRuns.forEach(function (r) {
     var custs = {};
+    var fresh = false;
     r.customers.forEach(function (c) {
       custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name),
                         received: c.received || [], units: c.units || { rack: c.rackCount || 0, wide: 0, pallet: 0, bin: 0 } };
@@ -254,7 +255,8 @@ function buildBoard(d) {
         });
       });
     } else {
-      // seed tiles from typed receiving counts into the tray
+      // seed tiles from typed receiving counts into the tray; auto-placed after build
+      fresh = true;
       r.customers.forEach(function (c) {
         var u = custs[c.name].units;
         TYPES.forEach(function (ty) { for (var i = 0; i < (u[ty] || 0); i++) tray.push(mkTile(c.name, ty)); });
@@ -272,8 +274,14 @@ function buildBoard(d) {
     Object.keys(custs).forEach(function (nm) { if (tiled[nm] && stops.indexOf(nm) === -1) stops.push(nm); });
     var hidden = Object.keys(custs).filter(function (nm) { return !tiled[nm]; }).sort();
 
-    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows };
+    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows, fresh: fresh };
     runOrder.push(r.key);
+  });
+
+  // Prepopulate the truck on a fresh seed: run the auto-loader so the spots start
+  // filled per the algorithm (stop order, wide/pallet rules); crew adjusts from there.
+  runOrder.forEach(function (rk) {
+    if (board[rk].fresh) autoLoad(rk);
   });
 }
 
