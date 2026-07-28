@@ -50,8 +50,8 @@
   .dxtra .pr{ color:var(--precip); font-weight:600; }
   .dxtra .wd{ color:var(--ink2); margin-left:10px; }
   .warm{ color:var(--warm); } .cold{ color:var(--cold); }
-  .chev{ color:var(--muted); font-size:13px; grid-row:1 / span 2; }
   details[open] summary{ border-bottom:1px solid var(--line); }
+  .sunrow{ padding:8px 12px; font-size:13px; color:var(--ink2); border-bottom:1px solid var(--line); display:flex; gap:18px; }
 
   table{ width:100%; border-collapse:collapse; font-size:14px; }
   th{ text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; padding:8px 10px 4px; }
@@ -61,6 +61,7 @@
   td.hh{ text-align:left; color:var(--ink2); font-variant-numeric:tabular-nums; }
   td.sym{ text-align:center; font-size:19px; padding:2px 4px; }
   td.tmp{ font-weight:600; font-variant-numeric:tabular-nums; }
+  td.fl{ color:var(--ink2); font-variant-numeric:tabular-nums; }
   td.pr{ color:var(--precip); font-weight:600; font-variant-numeric:tabular-nums; position:relative; }
   td.pr .bar{ position:absolute; left:2px; right:2px; bottom:2px; height:3px; border-radius:2px; background:var(--precip); opacity:.55; }
   td.pr.zero{ color:var(--muted); font-weight:400; opacity:.45; }
@@ -81,8 +82,32 @@
   .gline{ stroke:var(--line); stroke-width:1; }
   .glab{ fill:var(--muted); font-size:11px; font-family:inherit; }
   .thr{ stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; }
-  footer{ text-align:center; color:var(--muted); font-size:12px; padding:6px 0 30px; }
-  footer a{ color:inherit; }
+
+  /* overview */
+  .ovcard{ background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:10px; padding:12px 14px; cursor:pointer; }
+  .ovcard:hover{ background:var(--rowhov); }
+  .ovhead{ display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .ovhead b{ font-size:16px; }
+  .ovsub{ font-size:12px; color:var(--muted); flex:1; }
+  .ovtime{ font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .ovdel{ border:0; background:transparent; color:var(--muted); font-size:16px; cursor:pointer; padding:0 2px; line-height:1; }
+  .ovdel:hover{ color:var(--warm); }
+  .ovstats{ display:flex; flex-wrap:wrap; gap:6px 18px; align-items:center; }
+  .ovnow{ display:flex; align-items:center; gap:8px; min-width:96px; }
+  .ovnow .s{ font-size:30px; }
+  .ovnow .t{ font-size:28px; font-weight:600; }
+  .ovs label{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .ovs b{ font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .addbtn{ width:100%; background:transparent; border:1.5px dashed var(--line); color:var(--ink2); border-radius:12px; padding:13px; font:inherit; font-size:14px; cursor:pointer; }
+  .addbtn:hover{ background:var(--rowhov); }
+  .addbox{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
+  .addbox .srow{ display:flex; gap:8px; }
+  .addbox input{ flex:1; font:inherit; font-size:15px; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg); color:var(--ink); }
+  .addbox .go{ background:var(--hdr2); color:#fff; border:0; border-radius:9px; padding:9px 16px; font:inherit; cursor:pointer; }
+  .gres{ display:flex; width:100%; text-align:left; align-items:baseline; gap:8px; background:transparent; border:0; border-top:1px solid var(--line); padding:10px 4px; font:inherit; cursor:pointer; color:var(--ink); }
+  .gres:hover{ background:var(--rowhov); }
+  .gres small{ color:var(--muted); }
+  .gres:first-of-type{ margin-top:10px; }
 </style>
 </head>
 <body>
@@ -98,7 +123,7 @@
 <div class="wrap">
   <div class="meta"><b id="placeName"></b><span id="updated"></span></div>
   <div id="msg"></div>
-  <div id="days"></div>
+  <div id="content"></div>
   <details class="day" id="histCard" style="display:none">
     <summary>
       <div class="dname">Past 30 days — highs &amp; lows</div>
@@ -107,23 +132,30 @@
     <div class="hwrap"><div id="hist"></div><div class="htip" id="htip"></div></div>
   </details>
 </div>
-<footer>Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · hours &amp; dates are local to each place</footer>
+<footer style="text-align:center;color:var(--muted);font-size:12px;padding:6px 0 30px">
+  Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:inherit">Open-Meteo</a> · hours &amp; dates are local to each place
+</footer>
 
 <script>
 'use strict';
-const PLACES = [
+const DEFAULTS = [
   { id:'grunstadt', name:'Grünstadt',        sub:'Germany',        lat:49.569,  lon:8.168   },
   { id:'stpaul',    name:'St. Paul (55105)', sub:'Minnesota, USA', lat:44.9346, lon:-93.1673},
   { id:'stavanger', name:'Stavanger',        sub:'Norway',         lat:58.97,   lon:5.7331  },
   { id:'burton',    name:'Burton upon Trent',sub:'England',        lat:52.8066, lon:-1.643  },
 ];
 const $ = id => document.getElementById(id);
-let unit  = localStorage.getItem('wx_unit')  || 'metric';
-let place = localStorage.getItem('wx_place') || PLACES[0].id;
-if (!PLACES.some(p => p.id === place)) place = PLACES[0].id;
-const cache = {};   // placeId -> {data, at}
+let custom = [];
+try{ custom = JSON.parse(localStorage.getItem('wx_custom') || '[]'); }catch(e){}
+const PLACES = () => DEFAULTS.concat(custom);
 
-// WMO weather code -> [day emoji, night emoji, label]
+let unit = localStorage.getItem('wx_unit') || 'metric';
+let view = localStorage.getItem('wx_view') || 'overview';   // 'overview' | place id
+if (view !== 'overview' && !PLACES().some(p => p.id === view)) view = 'overview';
+const cache = {};      // placeId -> {data, at}
+let ov = null;         // overview {data:[...], at}
+let adding = false;
+
 const WMO = {
   0:['☀️','🌙','Clear'], 1:['🌤️','🌙','Mostly clear'], 2:['⛅','☁️','Partly cloudy'], 3:['☁️','☁️','Overcast'],
   45:['🌫️','🌫️','Fog'], 48:['🌫️','🌫️','Rime fog'],
@@ -138,22 +170,26 @@ const WMO = {
 };
 const sym = (code, isDay) => { const w = WMO[code] || ['❓','❓','—']; return [isDay ? w[0] : w[1], w[2]]; };
 
-const cToF   = c => c * 9/5 + 32;
-const fmtT   = c => Math.round(unit === 'metric' ? c : cToF(c)) + '°';
-const tCls   = c => c >= 0.5 ? 'warm' : 'cold';
-const fmtW   = ms => unit === 'metric' ? Math.round(ms) : Math.round(ms * 2.23694);
-const wUnit  = () => unit === 'metric' ? 'm/s' : 'mph';
-const fmtP   = mm => (Math.round(mm * 10) / 10).toFixed(1);
+const cToF  = c => c * 9/5 + 32;
+const conv  = c => unit === 'metric' ? c : cToF(c);
+const fmtT  = c => Math.round(conv(c)) + '°';
+const tCls  = c => c >= 0.5 ? 'warm' : 'cold';
+const fmtW  = ms => unit === 'metric' ? Math.round(ms) : Math.round(ms * 2.23694);
+const wUnit = () => unit === 'metric' ? 'm/s' : 'mph';
+const fmtP  = mm => (Math.round(mm * 10) / 10).toFixed(1);
+const hhmm  = iso => iso.slice(11, 16);
+const esc   = s => s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 function renderTabs(){
-  $('tabs').innerHTML = PLACES.map(p =>
-    `<button data-p="${p.id}" class="${p.id === place ? 'on' : ''}">${p.name}</button>`).join('');
+  $('tabs').innerHTML =
+    `<button data-p="overview" class="${view === 'overview' ? 'on' : ''}">Overview</button>` +
+    PLACES().map(p => `<button data-p="${p.id}" class="${p.id === view ? 'on' : ''}">${esc(p.name)}</button>`).join('');
   [...$('units').children].forEach(b => b.classList.toggle('on', b.dataset.u === unit));
 }
 $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  place = b.dataset.p; localStorage.setItem('wx_place', place);
-  renderTabs(); load();
+  view = b.dataset.p; localStorage.setItem('wx_view', view);
+  adding = false; renderTabs(); load();
 });
 $('units').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.dataset.u === unit) return;
@@ -161,48 +197,151 @@ $('units').addEventListener('click', e => {
   renderTabs(); render();
 });
 
-async function load(force){
-  const p = PLACES.find(x => x.id === place);
-  $('placeName').textContent = `${p.name} · ${p.sub}`;
-  const c = cache[place];
-  if (c && !force && Date.now() - c.at < 20*60*1000){ render(); return; }
-  if (c) render();  // stale paint while refetching
+function load(force){
   $('msg').innerHTML = '';
-  if (!c) $('days').innerHTML = '<div class="meta">Loading…</div>';
+  if (view === 'overview') loadOverview(force); else loadPlace(force);
+}
+
+/* ---------- overview ---------- */
+async function loadOverview(force){
+  $('placeName').textContent = 'All places';
+  $('histCard').style.display = 'none';
+  const ids = PLACES().map(p => p.id).join(',');
+  if (ov && ov.ids === ids && !force && Date.now() - ov.at < 20*60*1000){ render(); return; }
+  if (ov && ov.ids === ids) render(); else if (!ov) $('content').innerHTML = '<div class="meta">Loading…</div>';
+  const url = 'https://api.open-meteo.com/v1/forecast'
+    + `?latitude=${PLACES().map(p => p.lat).join(',')}&longitude=${PLACES().map(p => p.lon).join(',')}`
+    + '&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,wind_speed_10m'
+    + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset'
+    + '&wind_speed_unit=ms&timezone=auto&forecast_days=1';
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    ov = { data: Array.isArray(j) ? j : [j], at: Date.now(), ids };
+    localStorage.setItem('wx_ov', JSON.stringify(ov));
+    if (view === 'overview') render();
+  }catch(err){
+    if (!ov){ const s = localStorage.getItem('wx_ov'); if (s) try{ ov = JSON.parse(s); }catch(e){} }
+    if (ov && ov.ids === ids) render(); else $('content').innerHTML = '';
+    $('msg').innerHTML = `<div class="err">Couldn't fetch fresh data (${esc(err.message)}).` +
+      (ov && ov.ids === ids ? ' Showing last saved data.' : ' Check the connection and reload.') + '</div>';
+  }
+}
+
+function renderOverview(){
+  $('updated').textContent = ov && ov.ids === PLACES().map(p => p.id).join(',')
+    ? 'updated ' + new Date(ov.at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
+  const cards = PLACES().map((p, i) => {
+    const d = ov && ov.data[i];
+    const del = p.id.startsWith('c') ? `<button class="ovdel" data-del="${p.id}" title="Remove place">✕</button>` : '';
+    if (!d) return `<div class="ovcard" data-p="${p.id}"><div class="ovhead"><b>${esc(p.name)}</b><span class="ovsub">${esc(p.sub)}</span>${del}</div><div class="ovstats"><span class="ovsub">no data yet — tap to load</span></div></div>`;
+    const cur = d.current, dl = d.daily;
+    const [s, label] = sym(cur.weather_code, cur.is_day);
+    const local = new Date(Date.now() + (d.utc_offset_seconds||0)*1000).toISOString().slice(11,16);
+    const pr = dl.precipitation_sum[0] || 0;
+    return `<div class="ovcard" data-p="${p.id}">
+      <div class="ovhead"><b>${esc(p.name)}</b><span class="ovsub">${esc(p.sub)}</span><span class="ovtime">${local} local</span>${del}</div>
+      <div class="ovstats">
+        <div class="ovnow"><span class="s" title="${label}">${s}</span><span class="t ${tCls(cur.temperature_2m)}">${fmtT(cur.temperature_2m)}</span></div>
+        <div class="ovs"><label>Feels like</label><b>${fmtT(cur.apparent_temperature)}</b></div>
+        <div class="ovs"><label>High / Low</label><b><span class="${tCls(dl.temperature_2m_max[0])}">${fmtT(dl.temperature_2m_max[0])}</span> / <span class="${tCls(dl.temperature_2m_min[0])}">${fmtT(dl.temperature_2m_min[0])}</span></b></div>
+        <div class="ovs"><label>Rain today</label><b style="color:var(--precip)">${pr > 0 ? fmtP(pr) + ' mm' : '0 mm'}</b></div>
+        <div class="ovs"><label>Wind</label><b>${fmtW(cur.wind_speed_10m)} ${wUnit()}</b></div>
+        <div class="ovs"><label>Sunrise</label><b>🌅 ${hhmm(dl.sunrise[0])}</b></div>
+        <div class="ovs"><label>Sunset</label><b>🌇 ${hhmm(dl.sunset[0])}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+  const addUi = adding ? `<div class="addbox">
+      <div class="srow"><input id="q" placeholder="City name, e.g. Trondheim" autocomplete="off"><button class="go" id="qgo">Search</button></div>
+      <div id="qres"></div>
+    </div>` : `<button class="addbtn" id="addPlace">＋ Add place</button>`;
+  $('content').innerHTML = cards + addUi;
+
+  $('content').querySelectorAll('.ovcard').forEach(el => el.addEventListener('click', e => {
+    if (e.target.closest('.ovdel')) return;
+    view = el.dataset.p; localStorage.setItem('wx_view', view);
+    renderTabs(); load();
+  }));
+  $('content').querySelectorAll('.ovdel').forEach(el => el.addEventListener('click', () => {
+    const p = custom.find(c => c.id === el.dataset.del);
+    if (!p || !confirm(`Remove ${p.name}?`)) return;
+    custom = custom.filter(c => c.id !== el.dataset.del);
+    localStorage.setItem('wx_custom', JSON.stringify(custom));
+    localStorage.removeItem('wx2_' + el.dataset.del);
+    delete cache[el.dataset.del];
+    ov = null; renderTabs(); load(true);
+  }));
+  const add = $('addPlace');
+  if (add) add.addEventListener('click', () => { adding = true; renderOverview(); $('q').focus(); });
+  const go = $('qgo');
+  if (go){
+    const search = async () => {
+      const q = $('q').value.trim(); if (!q) return;
+      $('qres').innerHTML = '<div class="meta" style="margin-top:10px">Searching…</div>';
+      try{
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`);
+        const j = await r.json();
+        const res = j.results || [];
+        $('qres').innerHTML = res.length ? res.map((g, i) =>
+          `<button class="gres" data-i="${i}"><b>${esc(g.name)}</b><small>${esc([g.admin1, g.country].filter(Boolean).join(', '))}</small></button>`).join('')
+          : '<div class="meta" style="margin-top:10px">No matches.</div>';
+        $('qres').querySelectorAll('.gres').forEach(el => el.addEventListener('click', () => {
+          const g = res[+el.dataset.i];
+          custom.push({ id: 'c' + Math.random().toString(36).slice(2, 8), name: g.name,
+            sub: [g.admin1, g.country].filter(Boolean).join(', '), lat: g.latitude, lon: g.longitude });
+          localStorage.setItem('wx_custom', JSON.stringify(custom));
+          adding = false; ov = null; renderTabs(); load(true);
+        }));
+      }catch(err){ $('qres').innerHTML = `<div class="err" style="margin-top:10px">Search failed (${esc(err.message)}).</div>`; }
+    };
+    go.addEventListener('click', search);
+    $('q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+  }
+}
+
+/* ---------- single place ---------- */
+async function loadPlace(force){
+  const p = PLACES().find(x => x.id === view);
+  $('placeName').textContent = `${p.name} · ${p.sub}`;
+  const c = cache[view];
+  if (c && !force && Date.now() - c.at < 20*60*1000){ render(); return; }
+  if (c) render();
+  if (!c) $('content').innerHTML = '<div class="meta">Loading…</div>';
   const url = 'https://api.open-meteo.com/v1/forecast'
     + `?latitude=${p.lat}&longitude=${p.lon}`
-    + '&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day'
-    + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max'
+    + '&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day'
+    + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,sunrise,sunset'
     + '&wind_speed_unit=ms&timezone=auto&forecast_days=10&past_days=30';
   try{
     const r = await fetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    cache[place] = { data, at: Date.now() };
-    localStorage.setItem('wx_' + place, JSON.stringify(cache[place]));
-    if (place === p.id) render();
+    cache[view] = { data, at: Date.now() };
+    localStorage.setItem('wx2_' + view, JSON.stringify(cache[view]));
+    render();
   }catch(err){
-    const stored = localStorage.getItem('wx_' + place);
-    if (!cache[place] && stored){ cache[place] = JSON.parse(stored); render(); }
-    $('msg').innerHTML = `<div class="err">Couldn't fetch fresh forecast (${err.message}). ` +
-      (cache[place] ? 'Showing last saved data.' : 'Check the connection and reload.') + '</div>';
-    if (!cache[place]) $('days').innerHTML = '';
+    const stored = localStorage.getItem('wx2_' + view);
+    if (!cache[view] && stored){ try{ cache[view] = JSON.parse(stored); render(); }catch(e){} }
+    $('msg').innerHTML = `<div class="err">Couldn't fetch fresh forecast (${esc(err.message)}). ` +
+      (cache[view] ? 'Showing last saved data.' : 'Check the connection and reload.') + '</div>';
+    if (!cache[view]) $('content').innerHTML = '';
   }
 }
 
 function render(){
-  const c = cache[place]; if (!c) return;
+  if (view === 'overview'){ renderOverview(); return; }
+  const c = cache[view]; if (!c) return;
   const { hourly: h, daily: d } = c.data;
   $('updated').textContent = 'updated ' + new Date(c.at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 
-  // group hourly indices by local date ("YYYY-MM-DD" prefix of hourly.time)
   const byDay = {};
   h.time.forEach((t, i) => { const day = t.slice(0, 10); (byDay[day] = byDay[day] || []).push(i); });
 
-  // with past_days=30 the daily arrays hold 30 past days + 10 forecast days; old caches hold 10
   const todayIdx = Math.max(0, d.time.length - 10);
   const todayStr = d.time[todayIdx];
-  const open = sessionStorage.getItem('wx_open_' + place) || todayStr;
+  const open = sessionStorage.getItem('wx_open_' + view) || todayStr;
   const html = d.time.map((day, di) => {
     if (di < todayIdx) return '';
     const idx = byDay[day] || [];
@@ -210,7 +349,6 @@ function render(){
     const dt = new Date(day + 'T12:00:00');
     const dname = di === todayIdx ? 'Today' : dt.toLocaleDateString([], {weekday:'long'});
     const ddate = dt.toLocaleDateString([], {month:'short', day:'numeric'});
-    // 4 overview symbols: night / morning / afternoon / evening (representative hours 3,9,15,21)
     const syms = [3,9,15,21].map(hr => {
       const i = idx.find(j => +h.time[j].slice(11,13) >= hr);
       return i == null ? '' : sym(h.weather_code[i], h.is_day[i])[0];
@@ -222,14 +360,17 @@ function render(){
       const [s, label] = sym(h.weather_code[i], h.is_day[i]);
       const p = h.precipitation[i] || 0;
       const barW = p > 0 ? Math.max(6, Math.round(p / maxP * 100)) : 0;
+      const feels = h.apparent_temperature ? `<td class="fl">${fmtT(h.apparent_temperature[i])}</td>` : '<td class="fl">—</td>';
       return `<tr>
         <td class="hh">${hh}</td>
         <td class="sym" title="${label}">${s}</td>
         <td class="tmp ${tCls(h.temperature_2m[i])}">${fmtT(h.temperature_2m[i])}</td>
+        ${feels}
         <td class="pr ${p > 0 ? '' : 'zero'}">${p > 0 ? fmtP(p) : '0'}${p > 0 ? `<span class="bar" style="right:${100 - barW}%"></span>` : ''}</td>
         <td class="wnd">${fmtW(h.wind_speed_10m[i])} <span class="gust">(${fmtW(h.wind_gusts_10m[i])})</span><span class="arr" style="transform:rotate(${(h.wind_direction_10m[i] + 180) % 360}deg)">↑</span></td>
       </tr>`;
     }).join('');
+    const sun = d.sunrise ? `<div class="sunrow"><span>🌅 ${hhmm(d.sunrise[di])}</span><span>🌇 ${hhmm(d.sunset[di])}</span></div>` : '';
     return `<details class="day" data-day="${day}" ${day === open ? 'open' : ''}>
       <summary>
         <div><div class="dname">${dname}</div><div class="ddate">${ddate}</div></div>
@@ -237,36 +378,35 @@ function render(){
         <div class="dtemps"><span class="${tCls(d.temperature_2m_max[di])}">${fmtT(d.temperature_2m_max[di])}</span> / <span class="${tCls(d.temperature_2m_min[di])}">${fmtT(d.temperature_2m_min[di])}</span></div>
         <div class="dxtra"><span class="pr">${pSum > 0 ? fmtP(pSum) + ' mm' : '0 mm'}</span><span class="wd">${fmtW(d.wind_speed_10m_max[di])} ${wUnit()}</span></div>
       </summary>
+      ${sun}
       <table>
-        <tr><th>Time</th><th></th><th>Temp</th><th>Precip mm</th><th>Wind (gust) ${wUnit()}</th></tr>
+        <tr><th>Time</th><th></th><th>Temp</th><th>Feels</th><th>Precip mm</th><th>Wind (gust) ${wUnit()}</th></tr>
         ${rows}
       </table>
     </details>`;
   }).join('');
-  $('days').innerHTML = html;
-  $('days').querySelectorAll('details').forEach(el =>
-    el.addEventListener('toggle', () => { if (el.open) sessionStorage.setItem('wx_open_' + place, el.dataset.day); }));
+  $('content').innerHTML = html;
+  $('content').querySelectorAll('details').forEach(el =>
+    el.addEventListener('toggle', () => { if (el.open) sessionStorage.setItem('wx_open_' + view, el.dataset.day); }));
   renderHistory(d, todayIdx);
 }
 
-let histData = null;   // {days, hi, lo, x(), y()} for the hover layer
 function renderHistory(d, todayIdx){
   const card = $('histCard');
-  if (todayIdx < 5){ card.style.display = 'none'; return; }   // old cache without past days
+  if (todayIdx < 5){ card.style.display = 'none'; return; }
   card.style.display = '';
   card.open = localStorage.getItem('wx_hist') !== '0';
 
-  const conv = c => unit === 'metric' ? c : cToF(c);
-  const N = todayIdx + 1;                       // 30 past days + today
+  const N = todayIdx + 1;
   const days = d.time.slice(0, N);
   const hi = d.temperature_2m_max.slice(0, N).map(conv);
   const lo = d.temperature_2m_min.slice(0, N).map(conv);
 
   const W = 720, H = 240, ml = 38, mr = 14, mt = 14, mb = 26;
   const step = unit === 'metric' ? 5 : 10;
-  const thr  = unit === 'metric' ? 30 : 86;     // the "has it been above 30°C" line
+  const thr  = unit === 'metric' ? 30 : 86;
   const ymin = Math.floor(Math.min(...lo) / step) * step;
-  let ymax = Math.ceil (Math.max(...hi) / step) * step;
+  let ymax = Math.ceil(Math.max(...hi) / step) * step;
   if (ymax === ymin) ymax += step;
   const x = i => ml + i / (N - 1) * (W - ml - mr);
   const y = v => mt + (ymax - v) / (ymax - ymin) * (H - mt - mb);
@@ -293,7 +433,6 @@ function renderHistory(d, todayIdx){
     <circle r="4" fill="var(--ccold)" stroke="var(--card)" stroke-width="2"/>
   </g>`;
   $('hist').innerHTML = `<svg viewBox="0 0 ${W} ${H}" id="hsvg">${g}<rect x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="transparent" id="hcap"/></svg>`;
-  histData = { days, hi, lo, x, y, N, ml, W, mr };
 
   const svg = $('hsvg'), cap = $('hcap'), tip = $('htip');
   const move = ev => {
@@ -320,8 +459,9 @@ function renderHistory(d, todayIdx){
 }
 $('histCard').addEventListener('toggle', () => localStorage.setItem('wx_hist', $('histCard').open ? '1' : '0'));
 
-// boot: hydrate caches from localStorage, then fetch
-PLACES.forEach(p => { const s = localStorage.getItem('wx_' + p.id); if (s) try{ cache[p.id] = JSON.parse(s); }catch(e){} });
+/* ---------- boot ---------- */
+PLACES().forEach(p => { const s = localStorage.getItem('wx2_' + p.id); if (s) try{ cache[p.id] = JSON.parse(s); }catch(e){} });
+try{ const s = localStorage.getItem('wx_ov'); if (s) ov = JSON.parse(s); }catch(e){}
 renderTabs(); load();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 setInterval(() => { if (!document.hidden) load(); }, 30*60*1000);
