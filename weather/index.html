@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather — Will's Places</title>
+<style>
+  :root{
+    --hdr:#00417d; --hdr2:#0059b3; --bg:#f4f6f8; --card:#fff; --line:#d8dee4;
+    --ink:#1a1a1a; --ink2:#556; --muted:#8893a0;
+    --warm:#c62828; --cold:#0062bc; --precip:#006edb; --precipbar:#cfe6fb;
+    --rowhov:#f0f6fd; --chip:#e8eef5; --chipink:#123;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --hdr:#0a2c50; --hdr2:#0d3a6b; --bg:#10151b; --card:#1a2129; --line:#2c3743;
+      --ink:#e8edf2; --ink2:#a8b4c0; --muted:#6d7a88;
+      --warm:#ff7b6e; --cold:#6db4ff; --precip:#5aa9ff; --precipbar:#173a5e;
+      --rowhov:#1f2937; --chip:#243040; --chipink:#dbe6f2;
+    }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header{ background:var(--hdr); color:#fff; padding:14px 16px 0; }
+  .hrow{ max-width:760px; margin:0 auto; display:flex; align-items:center; gap:10px; }
+  .hrow h1{ margin:0; font-size:20px; flex:1; font-weight:600; }
+  .units{ display:flex; border:1px solid rgba(255,255,255,.45); border-radius:8px; overflow:hidden; }
+  .units button{ background:transparent; color:#fff; border:0; font:inherit; font-size:13px; padding:5px 12px; cursor:pointer; }
+  .units button.on{ background:#fff; color:var(--hdr); font-weight:600; }
+  nav{ max-width:760px; margin:0 auto; display:flex; gap:6px; overflow-x:auto; padding:12px 0 12px; -webkit-overflow-scrolling:touch; }
+  nav button{ flex:none; background:var(--hdr2); color:#fff; border:0; border-radius:999px; font:inherit; font-size:14px; padding:8px 16px; cursor:pointer; opacity:.75; white-space:nowrap; }
+  nav button.on{ background:#fff; color:var(--hdr); opacity:1; font-weight:600; }
+  .wrap{ max-width:760px; margin:0 auto; padding:14px 12px 40px; }
+  .meta{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin:2px 2px 10px; font-size:13px; color:var(--ink2); flex-wrap:wrap; }
+  .meta b{ font-size:16px; color:var(--ink); font-weight:600; }
+  .err{ background:#fdecea; color:#8b1a12; border:1px solid #f5c6c0; border-radius:10px; padding:10px 14px; font-size:14px; margin-bottom:12px; }
+  @media (prefers-color-scheme: dark){ .err{ background:#3a1512; color:#ffb4aa; border-color:#5c221c; } }
+
+  details.day{ background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  summary{ list-style:none; cursor:pointer; padding:12px 14px; display:grid; align-items:center; gap:4px 10px;
+    grid-template-columns:minmax(86px,1.1fr) auto 1fr auto; }
+  summary::-webkit-details-marker{ display:none; }
+  .dname{ font-weight:600; font-size:15px; }
+  .ddate{ font-size:12px; color:var(--muted); }
+  .dsyms{ font-size:20px; letter-spacing:2px; white-space:nowrap; }
+  .dtemps{ text-align:right; font-size:15px; white-space:nowrap; }
+  .dxtra{ text-align:right; font-size:13px; white-space:nowrap; }
+  .dxtra .pr{ color:var(--precip); font-weight:600; }
+  .dxtra .wd{ color:var(--ink2); margin-left:10px; }
+  .warm{ color:var(--warm); } .cold{ color:var(--cold); }
+  .chev{ color:var(--muted); font-size:13px; grid-row:1 / span 2; }
+  details[open] summary{ border-bottom:1px solid var(--line); }
+
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  th{ text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; padding:8px 10px 4px; }
+  th:first-child{ text-align:left; }
+  td{ padding:6px 10px; text-align:right; border-top:1px solid var(--line); white-space:nowrap; }
+  tr:first-child td{ border-top:0; }
+  td.hh{ text-align:left; color:var(--ink2); font-variant-numeric:tabular-nums; }
+  td.sym{ text-align:center; font-size:19px; padding:2px 4px; }
+  td.tmp{ font-weight:600; font-variant-numeric:tabular-nums; }
+  td.pr{ color:var(--precip); font-weight:600; font-variant-numeric:tabular-nums; position:relative; }
+  td.pr .bar{ position:absolute; left:2px; right:2px; bottom:2px; height:3px; border-radius:2px; background:var(--precip); opacity:.55; }
+  td.pr.zero{ color:var(--muted); font-weight:400; opacity:.45; }
+  td.wnd{ color:var(--ink2); font-variant-numeric:tabular-nums; }
+  td.wnd .gust{ color:var(--muted); font-size:12px; }
+  td.wnd .arr{ display:inline-block; margin-left:5px; color:var(--muted); }
+  tr:hover td{ background:var(--rowhov); }
+  footer{ text-align:center; color:var(--muted); font-size:12px; padding:6px 0 30px; }
+  footer a{ color:inherit; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1>🌦️ Weather</h1>
+    <div class="units" id="units">
+      <button data-u="metric">°C</button><button data-u="imperial">°F</button>
+    </div>
+  </div>
+  <nav id="tabs"></nav>
+</header>
+<div class="wrap">
+  <div class="meta"><b id="placeName"></b><span id="updated"></span></div>
+  <div id="msg"></div>
+  <div id="days"></div>
+</div>
+<footer>Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · hours &amp; dates are local to each place</footer>
+
+<script>
+'use strict';
+const PLACES = [
+  { id:'grunstadt', name:'Grünstadt',        sub:'Germany',        lat:49.569,  lon:8.168   },
+  { id:'stpaul',    name:'St. Paul (55105)', sub:'Minnesota, USA', lat:44.9346, lon:-93.1673},
+  { id:'stavanger', name:'Stavanger',        sub:'Norway',         lat:58.97,   lon:5.7331  },
+  { id:'burton',    name:'Burton upon Trent',sub:'England',        lat:52.8066, lon:-1.643  },
+];
+const $ = id => document.getElementById(id);
+let unit  = localStorage.getItem('wx_unit')  || 'metric';
+let place = localStorage.getItem('wx_place') || PLACES[0].id;
+if (!PLACES.some(p => p.id === place)) place = PLACES[0].id;
+const cache = {};   // placeId -> {data, at}
+
+// WMO weather code -> [day emoji, night emoji, label]
+const WMO = {
+  0:['☀️','🌙','Clear'], 1:['🌤️','🌙','Mostly clear'], 2:['⛅','☁️','Partly cloudy'], 3:['☁️','☁️','Overcast'],
+  45:['🌫️','🌫️','Fog'], 48:['🌫️','🌫️','Rime fog'],
+  51:['🌦️','🌧️','Light drizzle'], 53:['🌦️','🌧️','Drizzle'], 55:['🌧️','🌧️','Heavy drizzle'],
+  56:['🌧️','🌧️','Freezing drizzle'], 57:['🌧️','🌧️','Freezing drizzle'],
+  61:['🌦️','🌧️','Light rain'], 63:['🌧️','🌧️','Rain'], 65:['🌧️','🌧️','Heavy rain'],
+  66:['🌧️','🌧️','Freezing rain'], 67:['🌧️','🌧️','Freezing rain'],
+  71:['🌨️','🌨️','Light snow'], 73:['🌨️','🌨️','Snow'], 75:['❄️','❄️','Heavy snow'], 77:['🌨️','🌨️','Snow grains'],
+  80:['🌦️','🌧️','Light showers'], 81:['🌧️','🌧️','Showers'], 82:['🌧️','🌧️','Heavy showers'],
+  85:['🌨️','🌨️','Snow showers'], 86:['❄️','❄️','Snow showers'],
+  95:['⛈️','⛈️','Thunderstorm'], 96:['⛈️','⛈️','Thunder w/ hail'], 99:['⛈️','⛈️','Thunder w/ hail'],
+};
+const sym = (code, isDay) => { const w = WMO[code] || ['❓','❓','—']; return [isDay ? w[0] : w[1], w[2]]; };
+
+const cToF   = c => c * 9/5 + 32;
+const fmtT   = c => Math.round(unit === 'metric' ? c : cToF(c)) + '°';
+const tCls   = c => c >= 0.5 ? 'warm' : 'cold';
+const fmtW   = ms => unit === 'metric' ? Math.round(ms) : Math.round(ms * 2.23694);
+const wUnit  = () => unit === 'metric' ? 'm/s' : 'mph';
+const fmtP   = mm => (Math.round(mm * 10) / 10).toFixed(1);
+
+function renderTabs(){
+  $('tabs').innerHTML = PLACES.map(p =>
+    `<button data-p="${p.id}" class="${p.id === place ? 'on' : ''}">${p.name}</button>`).join('');
+  [...$('units').children].forEach(b => b.classList.toggle('on', b.dataset.u === unit));
+}
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  place = b.dataset.p; localStorage.setItem('wx_place', place);
+  renderTabs(); load();
+});
+$('units').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.dataset.u === unit) return;
+  unit = b.dataset.u; localStorage.setItem('wx_unit', unit);
+  renderTabs(); render();
+});
+
+async function load(force){
+  const p = PLACES.find(x => x.id === place);
+  $('placeName').textContent = `${p.name} · ${p.sub}`;
+  const c = cache[place];
+  if (c && !force && Date.now() - c.at < 20*60*1000){ render(); return; }
+  if (c) render();  // stale paint while refetching
+  $('msg').innerHTML = '';
+  if (!c) $('days').innerHTML = '<div class="meta">Loading…</div>';
+  const url = 'https://api.open-meteo.com/v1/forecast'
+    + `?latitude=${p.lat}&longitude=${p.lon}`
+    + '&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day'
+    + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max'
+    + '&wind_speed_unit=ms&timezone=auto&forecast_days=10';
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    cache[place] = { data, at: Date.now() };
+    localStorage.setItem('wx_' + place, JSON.stringify(cache[place]));
+    if (place === p.id) render();
+  }catch(err){
+    const stored = localStorage.getItem('wx_' + place);
+    if (!cache[place] && stored){ cache[place] = JSON.parse(stored); render(); }
+    $('msg').innerHTML = `<div class="err">Couldn't fetch fresh forecast (${err.message}). ` +
+      (cache[place] ? 'Showing last saved data.' : 'Check the connection and reload.') + '</div>';
+    if (!cache[place]) $('days').innerHTML = '';
+  }
+}
+
+function render(){
+  const c = cache[place]; if (!c) return;
+  const { hourly: h, daily: d } = c.data;
+  $('updated').textContent = 'updated ' + new Date(c.at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+
+  // group hourly indices by local date ("YYYY-MM-DD" prefix of hourly.time)
+  const byDay = {};
+  h.time.forEach((t, i) => { const day = t.slice(0, 10); (byDay[day] = byDay[day] || []).push(i); });
+
+  const todayStr = d.time[0];
+  const open = sessionStorage.getItem('wx_open_' + place) || todayStr;
+  const html = d.time.map((day, di) => {
+    const idx = byDay[day] || [];
+    if (!idx.length) return '';
+    const dt = new Date(day + 'T12:00:00');
+    const dname = di === 0 ? 'Today' : dt.toLocaleDateString([], {weekday:'long'});
+    const ddate = dt.toLocaleDateString([], {month:'short', day:'numeric'});
+    // 4 overview symbols: night / morning / afternoon / evening (representative hours 3,9,15,21)
+    const syms = [3,9,15,21].map(hr => {
+      const i = idx.find(j => +h.time[j].slice(11,13) >= hr);
+      return i == null ? '' : sym(h.weather_code[i], h.is_day[i])[0];
+    }).join('');
+    const pSum = d.precipitation_sum[di] || 0;
+    const maxP = Math.max(1, ...idx.map(i => h.precipitation[i]));
+    const rows = idx.map(i => {
+      const hh = h.time[i].slice(11, 16);
+      const [s, label] = sym(h.weather_code[i], h.is_day[i]);
+      const p = h.precipitation[i] || 0;
+      const barW = p > 0 ? Math.max(6, Math.round(p / maxP * 100)) : 0;
+      return `<tr>
+        <td class="hh">${hh}</td>
+        <td class="sym" title="${label}">${s}</td>
+        <td class="tmp ${tCls(h.temperature_2m[i])}">${fmtT(h.temperature_2m[i])}</td>
+        <td class="pr ${p > 0 ? '' : 'zero'}">${p > 0 ? fmtP(p) : '0'}${p > 0 ? `<span class="bar" style="right:${100 - barW}%"></span>` : ''}</td>
+        <td class="wnd">${fmtW(h.wind_speed_10m[i])} <span class="gust">(${fmtW(h.wind_gusts_10m[i])})</span><span class="arr" style="transform:rotate(${(h.wind_direction_10m[i] + 180) % 360}deg)">↑</span></td>
+      </tr>`;
+    }).join('');
+    return `<details class="day" data-day="${day}" ${day === open ? 'open' : ''}>
+      <summary>
+        <div><div class="dname">${dname}</div><div class="ddate">${ddate}</div></div>
+        <div class="dsyms">${syms}</div>
+        <div class="dtemps"><span class="${tCls(d.temperature_2m_max[di])}">${fmtT(d.temperature_2m_max[di])}</span> / <span class="${tCls(d.temperature_2m_min[di])}">${fmtT(d.temperature_2m_min[di])}</span></div>
+        <div class="dxtra"><span class="pr">${pSum > 0 ? fmtP(pSum) + ' mm' : '0 mm'}</span><span class="wd">${fmtW(d.wind_speed_10m_max[di])} ${wUnit()}</span></div>
+      </summary>
+      <table>
+        <tr><th>Time</th><th></th><th>Temp</th><th>Precip mm</th><th>Wind (gust) ${wUnit()}</th></tr>
+        ${rows}
+      </table>
+    </details>`;
+  }).join('');
+  $('days').innerHTML = html;
+  $('days').querySelectorAll('details').forEach(el =>
+    el.addEventListener('toggle', () => { if (el.open) sessionStorage.setItem('wx_open_' + place, el.dataset.day); }));
+}
+
+// boot: hydrate caches from localStorage, then fetch
+PLACES.forEach(p => { const s = localStorage.getItem('wx_' + p.id); if (s) try{ cache[p.id] = JSON.parse(s); }catch(e){} });
+renderTabs(); load();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+setInterval(() => { if (!document.hidden) load(); }, 30*60*1000);
+</script>
+</body>
+</html>
