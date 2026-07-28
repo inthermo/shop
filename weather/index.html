@@ -8,14 +8,16 @@
   :root{
     --hdr:#00417d; --hdr2:#0059b3; --bg:#f4f6f8; --card:#fff; --line:#d8dee4;
     --ink:#1a1a1a; --ink2:#556; --muted:#8893a0;
-    --warm:#c62828; --cold:#0062bc; --precip:#006edb; --precipbar:#cfe6fb;
+    --warm:#c62828; --cold:#0062bc; --cwarm:#c62828; --ccold:#0062bc;
+    --precip:#006edb; --precipbar:#cfe6fb;
     --rowhov:#f0f6fd; --chip:#e8eef5; --chipink:#123;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --hdr:#0a2c50; --hdr2:#0d3a6b; --bg:#10151b; --card:#1a2129; --line:#2c3743;
       --ink:#e8edf2; --ink2:#a8b4c0; --muted:#6d7a88;
-      --warm:#ff7b6e; --cold:#6db4ff; --precip:#5aa9ff; --precipbar:#173a5e;
+      --warm:#ff7b6e; --cold:#6db4ff; --cwarm:#e85d4f; --ccold:#2f8fe8;
+      --precip:#5aa9ff; --precipbar:#173a5e;
       --rowhov:#1f2937; --chip:#243040; --chipink:#dbe6f2;
     }
   }
@@ -66,6 +68,19 @@
   td.wnd .gust{ color:var(--muted); font-size:12px; }
   td.wnd .arr{ display:inline-block; margin-left:5px; color:var(--muted); }
   tr:hover td{ background:var(--rowhov); }
+
+  #histCard summary{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  #histCard .dname{ font-size:15px; }
+  .hleg{ display:flex; gap:14px; font-size:12px; color:var(--ink2); }
+  .hleg i{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+  .hwrap{ position:relative; padding:10px 8px 6px; }
+  .hwrap svg{ display:block; width:100%; height:auto; }
+  .htip{ position:absolute; display:none; pointer-events:none; background:var(--card); border:1px solid var(--line);
+    border-radius:8px; padding:6px 10px; font-size:12px; box-shadow:0 2px 8px rgba(0,0,0,.18); white-space:nowrap; z-index:2; }
+  .htip b{ font-weight:600; }
+  .gline{ stroke:var(--line); stroke-width:1; }
+  .glab{ fill:var(--muted); font-size:11px; font-family:inherit; }
+  .thr{ stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; }
   footer{ text-align:center; color:var(--muted); font-size:12px; padding:6px 0 30px; }
   footer a{ color:inherit; }
 </style>
@@ -84,6 +99,13 @@
   <div class="meta"><b id="placeName"></b><span id="updated"></span></div>
   <div id="msg"></div>
   <div id="days"></div>
+  <details class="day" id="histCard" style="display:none">
+    <summary>
+      <div class="dname">Past 30 days — highs &amp; lows</div>
+      <div class="hleg"><span><i style="background:var(--cwarm)"></i>High</span><span><i style="background:var(--ccold)"></i>Low</span></div>
+    </summary>
+    <div class="hwrap"><div id="hist"></div><div class="htip" id="htip"></div></div>
+  </details>
 </div>
 <footer>Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · hours &amp; dates are local to each place</footer>
 
@@ -151,7 +173,7 @@ async function load(force){
     + `?latitude=${p.lat}&longitude=${p.lon}`
     + '&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day'
     + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max'
-    + '&wind_speed_unit=ms&timezone=auto&forecast_days=10';
+    + '&wind_speed_unit=ms&timezone=auto&forecast_days=10&past_days=30';
   try{
     const r = await fetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -177,13 +199,16 @@ function render(){
   const byDay = {};
   h.time.forEach((t, i) => { const day = t.slice(0, 10); (byDay[day] = byDay[day] || []).push(i); });
 
-  const todayStr = d.time[0];
+  // with past_days=30 the daily arrays hold 30 past days + 10 forecast days; old caches hold 10
+  const todayIdx = Math.max(0, d.time.length - 10);
+  const todayStr = d.time[todayIdx];
   const open = sessionStorage.getItem('wx_open_' + place) || todayStr;
   const html = d.time.map((day, di) => {
+    if (di < todayIdx) return '';
     const idx = byDay[day] || [];
     if (!idx.length) return '';
     const dt = new Date(day + 'T12:00:00');
-    const dname = di === 0 ? 'Today' : dt.toLocaleDateString([], {weekday:'long'});
+    const dname = di === todayIdx ? 'Today' : dt.toLocaleDateString([], {weekday:'long'});
     const ddate = dt.toLocaleDateString([], {month:'short', day:'numeric'});
     // 4 overview symbols: night / morning / afternoon / evening (representative hours 3,9,15,21)
     const syms = [3,9,15,21].map(hr => {
@@ -221,7 +246,79 @@ function render(){
   $('days').innerHTML = html;
   $('days').querySelectorAll('details').forEach(el =>
     el.addEventListener('toggle', () => { if (el.open) sessionStorage.setItem('wx_open_' + place, el.dataset.day); }));
+  renderHistory(d, todayIdx);
 }
+
+let histData = null;   // {days, hi, lo, x(), y()} for the hover layer
+function renderHistory(d, todayIdx){
+  const card = $('histCard');
+  if (todayIdx < 5){ card.style.display = 'none'; return; }   // old cache without past days
+  card.style.display = '';
+  card.open = localStorage.getItem('wx_hist') !== '0';
+
+  const conv = c => unit === 'metric' ? c : cToF(c);
+  const N = todayIdx + 1;                       // 30 past days + today
+  const days = d.time.slice(0, N);
+  const hi = d.temperature_2m_max.slice(0, N).map(conv);
+  const lo = d.temperature_2m_min.slice(0, N).map(conv);
+
+  const W = 720, H = 240, ml = 38, mr = 14, mt = 14, mb = 26;
+  const step = unit === 'metric' ? 5 : 10;
+  const thr  = unit === 'metric' ? 30 : 86;     // the "has it been above 30°C" line
+  const ymin = Math.floor(Math.min(...lo) / step) * step;
+  let ymax = Math.ceil (Math.max(...hi) / step) * step;
+  if (ymax === ymin) ymax += step;
+  const x = i => ml + i / (N - 1) * (W - ml - mr);
+  const y = v => mt + (ymax - v) / (ymax - ymin) * (H - mt - mb);
+
+  let g = '';
+  for (let v = ymin; v <= ymax; v += step)
+    g += `<line class="gline" x1="${ml}" y1="${y(v)}" x2="${W - mr}" y2="${y(v)}"/>` +
+         `<text class="glab" x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${v}°</text>`;
+  for (let i = N - 1; i >= 0; i -= 7){
+    const dt = new Date(days[i] + 'T12:00:00');
+    const lab = i === N - 1 ? 'Today' : dt.toLocaleDateString([], {month:'short', day:'numeric'});
+    g += `<text class="glab" x="${x(i)}" y="${H - 8}" text-anchor="middle">${lab}</text>`;
+  }
+  if (thr > ymin && thr < ymax)
+    g += `<line class="thr" x1="${ml}" y1="${y(thr)}" x2="${W - mr}" y2="${y(thr)}"/>` +
+         `<text class="glab" x="${W - mr}" y="${y(thr) - 4}" text-anchor="end">${thr}°</text>`;
+
+  const path = a => a.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join('');
+  g += `<path d="${path(hi)}" fill="none" stroke="var(--cwarm)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  g += `<path d="${path(lo)}" fill="none" stroke="var(--ccold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  g += `<g id="hcross" style="display:none">
+    <line x1="0" y1="${mt}" x2="0" y2="${H - mb}" class="gline"/>
+    <circle r="4" fill="var(--cwarm)" stroke="var(--card)" stroke-width="2"/>
+    <circle r="4" fill="var(--ccold)" stroke="var(--card)" stroke-width="2"/>
+  </g>`;
+  $('hist').innerHTML = `<svg viewBox="0 0 ${W} ${H}" id="hsvg">${g}<rect x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="transparent" id="hcap"/></svg>`;
+  histData = { days, hi, lo, x, y, N, ml, W, mr };
+
+  const svg = $('hsvg'), cap = $('hcap'), tip = $('htip');
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(N - 1, Math.round((px - ml) / (W - ml - mr) * (N - 1))));
+    const cr = svg.querySelector('#hcross'); cr.style.display = '';
+    const [ln, c1, c2] = cr.children;
+    ln.setAttribute('x1', x(i)); ln.setAttribute('x2', x(i));
+    c1.setAttribute('cx', x(i)); c1.setAttribute('cy', y(hi[i]));
+    c2.setAttribute('cx', x(i)); c2.setAttribute('cy', y(lo[i]));
+    const dt = new Date(days[i] + 'T12:00:00');
+    tip.innerHTML = `<b>${dt.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})}</b><br>High ${Math.round(hi[i])}° · Low ${Math.round(lo[i])}°`;
+    tip.style.display = 'block';
+    const wrap = tip.parentElement.getBoundingClientRect();
+    let tx = (x(i) / W) * r.width + 12;
+    if (tx + tip.offsetWidth > wrap.width - 8) tx = (x(i) / W) * r.width - tip.offsetWidth - 12;
+    tip.style.left = tx + 'px';
+    tip.style.top = Math.max(4, (y(hi[i]) / H) * r.height - 14) + 'px';
+  };
+  cap.addEventListener('pointermove', move);
+  cap.addEventListener('pointerdown', move);
+  cap.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.querySelector('#hcross').style.display = 'none'; });
+}
+$('histCard').addEventListener('toggle', () => localStorage.setItem('wx_hist', $('histCard').open ? '1' : '0'));
 
 // boot: hydrate caches from localStorage, then fetch
 PLACES.forEach(p => { const s = localStorage.getItem('wx_' + p.id); if (s) try{ cache[p.id] = JSON.parse(s); }catch(e){} });
