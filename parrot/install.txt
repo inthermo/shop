@@ -1,5 +1,5 @@
 # Parrot for Windows installer - push-to-talk local dictation (hold Ctrl+Win).
-# Usage (PowerShell):  irm https://tools.myinthermo.com/parrot/install.ps1 | iex
+# Usage (PowerShell):  irm https://tools.myinthermo.com/parrot/install.txt | iex
 $ErrorActionPreference = "Stop"
 
 Write-Host "== Parrot for Windows: push-to-talk dictation (hold Ctrl+Win) =="
