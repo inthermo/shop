@@ -518,11 +518,11 @@
     .log-col-notes { color: #92400e; font-style: italic; width: 18%; }
     .log-col-pricing { width: 11%; }
 
-    /* ---- Pricing tab ---- */
-    .tab-badge { background: #dc2626; color: #fff; border-radius: 999px; padding: 1px 7px; font-size: 12px; font-weight: 700; margin-left: 6px; }
+    /* ---- Inline pricing (needs-pricing badge + expandable panel in the Log) ---- */
     .np-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b;
                 border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-    .pr-toolbar-hint { color: #6b7280; font-size: 14px; flex: 1; align-self: center; }
+    .np-badge.open { background: #f59e0b; color: #fff; }
+    .pr-panel-cell { background: #f3f4f6; padding: 12px 14px; }
     .pr-card { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
     .pr-part { font-weight: 700; font-size: 17px; color: #1a1a2e; }
     .pr-sub { color: #6b7280; font-size: 13px; margin-top: 2px; }
@@ -537,7 +537,7 @@
     .pr-price { font-size: 18px; font-weight: 800; color: #059669; }
     .pr-save { margin-top: 10px; background: #059669; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 16px; font-weight: 700; cursor: pointer; }
     .pr-save:disabled { opacity: .4; }
-    .pr-saved { margin-top: 8px; color: #059669; font-weight: 700; font-size: 15px; }
+    .pr-skip { margin-top: 10px; background: #fff; color: #6b7280; border: 2px solid #d1d5db; border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
     .log-done { color: #22c55e; font-weight: 700; }
     .log-table tr.day-start td { border-top: 2px solid #e5e7eb; }
     @keyframes logFlash { 0% { background: #fde68a; } 100% { background: transparent; } }
@@ -841,7 +841,6 @@
   <button class="tab-btn"        id="tab-intake"  onclick="switchTab('intake')">Receive</button>
   <button class="tab-btn active" id="tab-log"     onclick="switchTab('log')">Today's Log</button>
   <button class="tab-btn"        id="tab-pickups" onclick="switchTab('pickups')">Pickups</button>
-  <button class="tab-btn"        id="tab-pricing" onclick="switchTab('pricing')">Pricing<span class="tab-badge" id="pricingCount" style="display:none"></span></button>
 </div>
 
 <!-- ========== INTAKE PAGE ========== -->
@@ -989,17 +988,6 @@
   <div id="pickupsContent" class="loading-msg">Loading…</div>
 </div>
 
-<!-- ========== PRICING PAGE — parts received recently whose Steelhead price is blank/$0/
-     placeholder. Pick how the part is staged, parts per container, and the computed unit
-     price saves to the Tracker's "Part Pricing" tab for Will to key into Steelhead. -->
-<div class="page" id="page-pricing">
-  <div class="log-toolbar">
-    <div class="pr-toolbar-hint">Parts received with no price set in Steelhead</div>
-    <button class="log-refresh" onclick="refreshPricing()" title="Refresh">↻</button>
-  </div>
-  <div id="pricingContent" class="loading-msg">Loading…</div>
-</div>
-
 <button class="fab" id="fab" onclick="switchTab('intake')" title="New receiving entry">+</button>
 
 <div class="toast" id="toast"></div>
@@ -1059,7 +1047,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-02a';
+var APP_VERSION = '2026-08-02b';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1111,7 +1099,9 @@ var _PRELOAD    = null;
 var _PARTS      = {};   // { customerNameLower: [part name strings] } — per-customer item vocab
 var _UNPRICED   = {};   // { normCust: { normPart: display name } } — Steelhead parts w/ placeholder price
 var _PRICING    = [];   // saved Part Pricing tab rows [{customer, part, staged, ppc, unitPrice, ...}]
-var _PQ         = [];   // pricing queue state, one entry per rendered card
+var _PQ         = [];   // pricing card state, keyed through _PQIDX (persists across re-renders)
+var _PQIDX      = {};   // normCust|normPart → index into _PQ
+var _OPEN_PRICING = null; // entryKey of the log row whose inline pricing panel is open
 
 // Top 20 customers by max single-item shipment frequency (from historical data).
 // short = button label; full = canonical name to match against allCustomers.
@@ -1253,13 +1243,12 @@ function selectTopCustomer(fullName) {
 // TABS
 // =====================================================================
 function switchTab(tab) {
-  ['intake', 'log', 'pickups', 'pricing'].forEach(function (id) {
+  ['intake', 'log', 'pickups'].forEach(function (id) {
     document.getElementById('tab-' + id).classList.toggle('active', id === tab);
     document.getElementById('page-' + id).classList.toggle('active', id === tab);
   });
   document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
   if (tab === 'pickups') loadPickups();
-  if (tab === 'pricing') renderPricing();
   if (tab === 'log') {
     // The log was baked into bootstrap and already rendered, so opening the tab is
     // instant. Kick a silent background refresh (no "Loading…" wipe) so it stays current.
@@ -1985,6 +1974,9 @@ function loadLog(silent) {
   call('getReceivingRange', { days: 30 })
     .then(function (result) {
       _TODAY_LOG = result;           // keep the baked copy fresh for the next tab open
+      // Don't re-render under an open pricing panel — the 30s auto-refresh would
+      // wipe a half-typed parts-per-container entry. Data stays fresh in _TODAY_LOG.
+      if (silent && _OPEN_PRICING) return;
       renderLog(result);
     })
     .catch(function (e) {
@@ -2002,14 +1994,21 @@ function renderLog(result) {
     return;
   }
   var lastDate = null;
-  var rowsHtml = entries.map(function (e) {
+  var rowsHtml = entries.map(function (e, idx) {
     var firstOfDay = e.date !== lastDate;
     lastDate = e.date;
     var po = e.poNum ? esc(e.poNum) : '<span style="color:#d1d5db">—</span>';
     if (e.done) po += ' <span class="log-done">✓</span>';
     var np = entryUnpricedItems(e);
+    var open = np.length && _OPEN_PRICING === entryKey(e);
     var pricingCell = np.length
-      ? '<span class="np-badge" onclick="switchTab(\'pricing\')" title="' + esc(np.map(function (x) { return x.part; }).join(', ')) + '">$ needs pricing</span>'
+      ? '<span class="np-badge' + (open ? ' open' : '') + '" onclick="togglePricingPanel(' + idx + ')">$ needs pricing</span>'
+      : '';
+    var panelRow = open
+      ? '<tr class="pr-panel-row" data-date="' + esc(e.date) + '"'
+        + ' data-cust="' + esc(String(e.customer).toLowerCase()) + '"'
+        + ' data-done="' + (e.done ? '1' : '0') + '">'
+        + '<td colspan="6" class="pr-panel-cell">' + pricingPanelHtml(e, np) + '</td></tr>'
       : '';
     return '<tr class="log-row ' + (e.done ? 'done ' : '') + (firstOfDay ? 'day-start' : '') + '"'
       + (firstOfDay ? ' id="logd-' + esc(e.date) + '"' : '')
@@ -2024,7 +2023,7 @@ function renderLog(result) {
       + '<td class="log-col-items">' + esc(e.description) + '</td>'
       + '<td class="log-col-notes">' + (e.note ? esc(e.note) : '') + '</td>'
       + '<td class="log-col-pricing">' + pricingCell + '</td>'
-      + '</tr>';
+      + '</tr>' + panelRow;
   }).join('');
   document.getElementById('logContent').innerHTML =
     '<div class="log-table-wrap"><table class="log-table">'
@@ -2038,7 +2037,6 @@ function renderLog(result) {
     + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
     + '<div id="logNoMatch" class="log-empty" style="display:none">No entries match the filter.</div>';
   applyLogFilter();
-  updatePricingBadge();
 }
 
 // Convert 'yyyy-MM-dd' → 'Thu 6/25'.
@@ -2055,7 +2053,7 @@ function applyLogFilter() {
   var statEl = document.getElementById('logFilterStatus');
   var cust   = custEl ? custEl.value.trim().toLowerCase() : '';
   var status = statEl ? statEl.value : 'all';
-  var rows   = document.querySelectorAll('#logContent tr.log-row');
+  var rows   = document.querySelectorAll('#logContent tr.log-row, #logContent tr.pr-panel-row');
   var shown  = 0;
   for (var i = 0; i < rows.length; i++) {
     var r    = rows[i];
@@ -2064,7 +2062,7 @@ function applyLogFilter() {
     var okS  = status === 'all' || (status === 'pending' && !done) || (status === 'done' && done);
     var show = okC && okS;
     r.style.display = show ? '' : 'none';
-    if (show) shown++;
+    if (show && r.classList.contains('log-row')) shown++;
   }
   var nm = document.getElementById('logNoMatch');
   if (nm) nm.style.display = (rows.length && !shown) ? '' : 'none';
@@ -2086,13 +2084,16 @@ function jumpToLogDate() {
 }
 
 // =====================================================================
-// PRICING TAB — parts on recent receiving entries whose Steelhead price is a
-// placeholder (blank / $0 / < $0.50 / exactly $1). The decision tree sets how
-// the part is staged; unit price = container rate × quarter-fraction ÷ parts
-// per container. Saving writes the Tracker's "Part Pricing" tab — Will keys
-// the price into Steelhead by hand; the daily 6AM parts-CSV sync then clears
-// the part off this tab for good.
+// INLINE PRICING — parts on receiving entries (from PRICING_SINCE forward)
+// whose Steelhead price is a placeholder (blank / $0 / < $0.50 / exactly $1)
+// get a "$ needs pricing" badge; tapping it expands a pricing panel right
+// under that log row. The decision tree sets how the part is staged; unit
+// price = container rate × quarter-fraction ÷ parts per container. Saving
+// writes the Tracker's "Part Pricing" tab — Will keys the price into
+// Steelhead by hand; the daily 6AM parts-CSV sync then clears the flag for
+// good. "Below min lot charge" records a deliberate no-price decision.
 // =====================================================================
+var PRICING_SINCE = '2026-08-02'; // going-forward only: entries before launch day never flag
 var PRICING_RATES = {
   rack: 150,
   basket: { M: 200, L: 250, XL: 325 },
@@ -2139,6 +2140,7 @@ function savedPricingSet() {
 
 // Items on a log entry that still need a pricing decision: [{part, qty}].
 function entryUnpricedItems(e) {
+  if (!e.date || e.date < PRICING_SINCE) return []; // only parts going forward
   var up = unpricedFor(e.customer);
   if (!up) return [];
   var saved = savedPricingSet();
@@ -2154,26 +2156,39 @@ function entryUnpricedItems(e) {
   return out;
 }
 
-// One card per distinct customer+part across the 30-day log, newest first,
-// received quantities summed.
-function buildPricingQueue() {
-  var q = {}, order = [];
-  ((_TODAY_LOG && _TODAY_LOG.entries) || []).forEach(function (e) {
-    entryUnpricedItems(e).forEach(function (it) {
-      var k = normKey(e.customer) + '|' + normKey(it.part);
-      if (!q[k]) { q[k] = { customer: e.customer, part: it.part, qty: 0, lastDate: e.date }; order.push(k); }
-      q[k].qty += it.qty;
-    });
-  });
-  return order.map(function (k) { return q[k]; });
+// Stable identity for a log row so the open panel survives re-renders even
+// when new entries shift row indices.
+function entryKey(e) {
+  return [e.date, e.customer, e.poNum || '', e.description].join('|');
 }
 
-function updatePricingBadge() {
-  var el = document.getElementById('pricingCount');
-  if (!el) return;
-  var n = buildPricingQueue().length;
-  el.textContent = n;
-  el.style.display = n ? '' : 'none';
+function togglePricingPanel(idx) {
+  var e = _TODAY_LOG && _TODAY_LOG.entries && _TODAY_LOG.entries[idx];
+  if (!e) return;
+  var k = entryKey(e);
+  _OPEN_PRICING = _OPEN_PRICING === k ? null : k;
+  renderLog(_TODAY_LOG);
+}
+
+// Card state for a customer+part, created on first use and reused after —
+// half-filled decisions survive panel toggles and background refreshes.
+function pqFor(customer, part, qty, date) {
+  var k = normKey(customer) + '|' + normKey(part);
+  if (_PQIDX[k] == null) {
+    _PQIDX[k] = _PQ.length;
+    _PQ.push({ customer: customer, part: part, qty: qty, lastDate: date,
+               staged: 'rack', size: 'L', stackable: false, frac: 1, ppc: '' });
+  } else {
+    _PQ[_PQIDX[k]].qty = qty;
+  }
+  return _PQIDX[k];
+}
+
+function pricingPanelHtml(e, np) {
+  return np.map(function (it) {
+    var i = pqFor(e.customer, it.part, it.qty, e.date);
+    return '<div class="pr-card" id="prc-' + i + '">' + pricingCardHtml(i) + '</div>';
+  }).join('');
 }
 
 function fmtFrac(f) {
@@ -2205,11 +2220,6 @@ function computeCard(s) {
 
 function pricingCardHtml(i) {
   var s = _PQ[i];
-  if (s.saved) {
-    return '<div class="pr-part">' + esc(s.part) + '</div>'
-      + '<div class="pr-sub">' + esc(s.customer) + '</div>'
-      + '<div class="pr-saved">✓ Saved — $' + s.saved.toFixed(2) + '/part (enter in Steelhead)</div>';
-  }
   var c = computeCard(s);
   var seg = function (active, onclick, label) {
     return '<button class="pr-seg' + (active ? ' active' : '') + '" onclick="' + onclick + '">' + label + '</button>';
@@ -2241,8 +2251,11 @@ function pricingCardHtml(i) {
     + ' oninput="onPqPpc(' + i + ',this.value)" placeholder="count">'
     + '</div>'
     + '<div class="pr-math" id="prMath-' + i + '">' + pricingMathHtml(c) + '</div>'
+    + '<div class="pr-row">'
     + '<button class="pr-save" id="prSave-' + i + '" onclick="savePricing(' + i + ')"'
-    + (c.price ? '' : ' disabled') + '>Save price</button>';
+    + (c.price ? '' : ' disabled') + '>Save price</button>'
+    + '<button class="pr-skip" onclick="saveBelowMin(' + i + ')">Below min lot charge — no price</button>'
+    + '</div>';
   return html;
 }
 
@@ -2250,31 +2263,6 @@ function pricingMathHtml(c) {
   var base = '$' + c.rate + (c.frac !== 1 ? ' × ' + fmtFrac(c.frac) : '');
   if (!c.price) return base + ' ÷ … parts';
   return base + ' ÷ ' + c.ppc + ' = <span class="pr-price">$' + c.price.toFixed(2) + '</span>/part';
-}
-
-function renderPricing() {
-  var queue = buildPricingQueue();
-  // Preserve in-progress card state across re-renders (matched by customer+part).
-  var prev = {};
-  _PQ.forEach(function (s) { prev[normKey(s.customer) + '|' + normKey(s.part)] = s; });
-  _PQ = queue.map(function (q) {
-    var old = prev[normKey(q.customer) + '|' + normKey(q.part)];
-    return old ? Object.assign(old, { qty: q.qty, lastDate: q.lastDate })
-               : { customer: q.customer, part: q.part, qty: q.qty, lastDate: q.lastDate,
-                   staged: 'rack', size: 'L', stackable: false, frac: 1, ppc: '' };
-  });
-  var el = document.getElementById('pricingContent');
-  if (!_PQ.length) {
-    el.innerHTML = '<div class="log-empty">Nothing needs pricing 🎉<br>'
-      + '<span style="font-size:13px">Parts received in the last 30 days with no real price in Steelhead show up here.</span></div>';
-    updatePricingBadge();
-    return;
-  }
-  el.className = '';
-  el.innerHTML = _PQ.map(function (s, i) {
-    return '<div class="pr-card" id="prc-' + i + '">' + pricingCardHtml(i) + '</div>';
-  }).join('');
-  updatePricingBadge();
 }
 
 function setPq(i, patch) {
@@ -2297,45 +2285,45 @@ function onPqPpc(i, val) {
   document.getElementById('prSave-' + i).disabled = !c.price;
 }
 
-function savePricing(i) {
+// Shared save path: send the decision, record it locally so the badge clears,
+// then re-render the log (panel stays open if the row has more unpriced items).
+function sendPricingDecision_(i, payload, toastMsg) {
   var s = _PQ[i];
-  var c = computeCard(s);
-  if (!c.price) return;
   var btn = document.getElementById('prSave-' + i);
-  btn.disabled = true; btn.textContent = 'Saving…';
-  call('savePartPricing', {
-    customer: s.customer, part: s.part, staged: c.stagedLabel,
-    ppc: Number(s.ppc), unitPrice: c.price, recvQty: s.qty
-  }).then(function (res) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  call('savePartPricing', payload).then(function (res) {
     if (!res || !res.ok) {
-      btn.disabled = false; btn.textContent = 'Save price';
+      if (btn) { btn.disabled = false; btn.textContent = 'Save price'; }
       showToast('⚠️ Save failed: ' + ((res && res.error) || '?'), 5000);
       return;
     }
-    _PRICING.push({ customer: s.customer, part: s.part, staged: c.stagedLabel, ppc: Number(s.ppc), unitPrice: c.price });
-    s.saved = c.price;
-    document.getElementById('prc-' + i).innerHTML = pricingCardHtml(i);
-    showToast('✓ $' + c.price.toFixed(2) + '/part saved — ' + s.part, 4000);
-    updatePricingBadge();
-    if (_TODAY_LOG && _TODAY_LOG.entries) renderLog(_TODAY_LOG); // clear the row badge
-  }).catch(function (e) {
-    btn.disabled = false; btn.textContent = 'Save price';
+    _PRICING.push({ customer: s.customer, part: s.part, staged: payload.staged, ppc: payload.ppc, unitPrice: payload.unitPrice });
+    showToast(toastMsg, 4000);
+    if (_TODAY_LOG && _TODAY_LOG.entries) renderLog(_TODAY_LOG); // clears the badge/card
+  }).catch(function () {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save price'; }
     showToast('⚠️ Network error — not saved', 5000);
   });
 }
 
-function refreshPricing() {
-  document.getElementById('pricingContent').innerHTML = '<div class="loading-msg">Loading…</div>';
-  Promise.all([
-    call('getPartPricing', {}),
-    call('getReceivingRange', { days: 30 })
-  ]).then(function (r) {
-    if (r[0] && r[0].ok) _PRICING = r[0].rows || [];
-    if (r[1] && r[1].ok) _TODAY_LOG = r[1];
-    renderPricing();
-  }).catch(function () {
-    document.getElementById('pricingContent').innerHTML = '<div class="log-empty">Could not refresh.</div>';
-  });
+function savePricing(i) {
+  var s = _PQ[i];
+  var c = computeCard(s);
+  if (!c.price) return;
+  sendPricingDecision_(i, {
+    customer: s.customer, part: s.part, staged: c.stagedLabel,
+    ppc: Number(s.ppc), unitPrice: c.price, recvQty: s.qty
+  }, '✓ $' + c.price.toFixed(2) + '/part saved — ' + s.part);
+}
+
+// Deliberate no-price decision: the lot is below the minimum lot charge, so the
+// part gets no unit price. Recorded on the Part Pricing tab so it stops flagging.
+function saveBelowMin(i) {
+  var s = _PQ[i];
+  sendPricingDecision_(i, {
+    customer: s.customer, part: s.part, staged: 'Below min lot charge',
+    ppc: '', unitPrice: 0, belowMin: true, recvQty: s.qty
+  }, '✓ Marked below min lot charge — ' + s.part);
 }
 
 // =====================================================================
