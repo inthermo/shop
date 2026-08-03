@@ -70,6 +70,25 @@
       color: #374151; background: transparent;
     }
     .stops .addstop:active { opacity: .7; }
+
+    /* ---- print sheet (B/W, one truck per page) ---- */
+    #printArea { display: none; }
+    @media print {
+      body > .bar, #root, #pop { display: none !important; }
+      body { background: #fff; }
+      #printArea { display: block; }
+      #printArea .page { page-break-after: always; padding: 0; color: #000; font-family: Arial, sans-serif; }
+      #printArea .page:last-child { page-break-after: auto; }
+      #printArea h2 { font-size: 18pt; margin: 0 0 2pt; }
+      #printArea .sub { font-size: 10pt; margin: 0 0 10pt; color: #000; }
+      #printArea table { border-collapse: collapse; width: 100%; }
+      #printArea .stops-t { margin-bottom: 12pt; width: auto; min-width: 60%; }
+      #printArea .stops-t th, #printArea .stops-t td { border: 1pt solid #000; padding: 4pt 8pt; font-size: 11pt; text-align: left; }
+      #printArea .truck-t td { border: 1pt solid #000; padding: 8pt 4pt; font-size: 10pt; text-align: center; width: 33%; height: 26pt; }
+      #printArea .truck-t td.filled { background: #eee; font-weight: 700; }
+      #printArea .truck-t .cap { border: 1pt solid #000; background: #000; color: #fff; font-weight: 700; font-size: 10pt; padding: 4pt; text-align: center; }
+      #printArea .unplaced-note { font-size: 10pt; margin-top: 8pt; }
+    }
     #pop .addc {
       display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 600;
       padding: 8px 10px; margin-top: 6px; border: none; border-radius: 8px;
@@ -148,11 +167,13 @@
     <span class="day" id="dayLabel"></span>
     <input type="date" id="datePick">
     <button id="refreshBtn">Refresh</button>
+    <button id="printBtn">Print</button>
     <button class="danger" id="resetBtn">Reset day</button>
     <button class="save" id="saveBtn">Save</button>
     <span id="status"></span>
   </div>
   <div id="root"><div class="empty">Loading…</div></div>
+  <div id="printArea"></div>
   <div id="pop"></div>
 
 <script>
@@ -607,6 +628,61 @@ function scheduleStopsSave(rk) {
 }
 
 // ===== events =====
+// Print: compose a B/W paper sheet per truck — stop order + truck diagram — then
+// hand off to the browser's print dialog (@media print shows only #printArea).
+function buildPrintSheet() {
+  var day = document.getElementById('dayLabel').textContent;
+  var html = '';
+  runOrder.forEach(function (rk) {
+    var b = board[rk];
+    html += '<div class="page">';
+    html += '<h2>' + esc(b.label) + ' — ' + esc(day) + '</h2>';
+    html += '<div class="sub">Truck leaves ' + fmtTime(b.start) + '. Load racks strapped against the front of the truck. Stop 1 unloads first at the rear door.</div>';
+
+    html += '<table class="stops-t"><tr><th>Stop</th><th>Customer</th><th>Load</th></tr>';
+    b.stops.forEach(function (nm, i) {
+      html += '<tr><td>' + (i + 1) + '</td><td>' + esc(b.customers[nm].short) + '</td><td>' + unitSummary(rk, nm) + '</td></tr>';
+    });
+    html += '</table>';
+
+    html += '<table class="truck-t"><tr><td class="cap" colspan="3">▲ FRONT OF TRUCK — strap racks here — last stop</td></tr>';
+    b.rows.forEach(function (row) {
+      if (row.length && row[0].type === 'bar') {
+        html += '<tr><td class="filled" colspan="3">— LOAD BAR —</td></tr>';
+        return;
+      }
+      // mirror the on-screen placement: specials ride right, 2-tile rows leave the middle open
+      var cells = ['', '', ''];
+      if (row.length === 1) { cells[isSpecial(row[0]) ? 2 : 0] = row[0]; }
+      else if (row.length === 2) { cells[0] = row[0]; cells[2] = row[1]; }
+      else { row.forEach(function (t, i) { if (i < 3) cells[i] = t; }); }
+      html += '<tr>';
+      cells.forEach(function (t) {
+        if (!t) { html += '<td></td>'; return; }
+        var tag = t.type !== 'rack' ? ' (' + t.type.toUpperCase() + ')' : '';
+        html += '<td class="filled">' + esc(b.customers[t.customer] ? b.customers[t.customer].short : t.customer) + tag + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '<tr><td class="cap" colspan="3">▼ REAR DOOR — stop 1, unloads first</td></tr></table>';
+
+    var un = b.tray.filter(function (t) { return t.type !== 'bar'; });
+    if (un.length) {
+      var byC = {};
+      un.forEach(function (t) { byC[t.customer] = (byC[t.customer] || 0) + 1; });
+      html += '<div class="unplaced-note"><b>Not placed (decide at the truck):</b> '
+            + Object.keys(byC).map(function (nm) { return esc((b.customers[nm] || { short: nm }).short) + ' × ' + byC[nm]; }).join(', ')
+            + '</div>';
+    }
+    html += '</div>';
+  });
+  document.getElementById('printArea').innerHTML = html;
+}
+document.getElementById('printBtn').addEventListener('click', function () {
+  buildPrintSheet();
+  window.print();
+});
+
 document.getElementById('saveBtn').addEventListener('click', doSave);
 document.getElementById('refreshBtn').addEventListener('click', function () { load(document.getElementById('datePick').value || null); });
 document.getElementById('datePick').addEventListener('change', function () { load(this.value); });
