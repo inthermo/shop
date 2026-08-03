@@ -172,7 +172,7 @@ function call(op, payload) {
 // The truck is a grid: TRUCK_ROWS rows of up to 3 tiles. rows[0] = Front of Truck (nose,
 // last stop), rows[TRUCK_ROWS-1] = rear door (first stop, unloads first).
 // A row holding any wide rack / pallet / bin fits only 2 across; a load bar takes a full row.
-var TRUCK_ROWS = 10;
+var TRUCK_ROWS = 8;   // truck fits no more than 8 rows of racks (Will, 2026-07-27)
 var TYPES = ['rack', 'wide', 'pallet', 'bin'];
 var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates' };
 var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', bar: '' };
@@ -412,14 +412,17 @@ function autoLoad(rk) {
     });
   });
 
-  // racks & wides: first stop starts at the door and we fill upward, sharing part-full rows
-  var cur = TRUCK_ROWS - 1;
-  order.forEach(function (nm) {
+  // racks & wides: packed flush against the FRONT wall so they strap to it (Will,
+  // 2026-07-27) — last stop goes at the nose, then each earlier stop behind it, so
+  // unload order at the rear door still matches the route. Any slack ends up by the
+  // door, not at the front.
+  var cur = 0;
+  order.slice().reverse().forEach(function (nm) {
     var items = byCust[nm].filter(function (t) { return t.type === 'rack' || t.type === 'wide'; });
     items.sort(function (a, b) { return (a.type === 'wide' ? 0 : 1) - (b.type === 'wide' ? 0 : 1); });
     items.forEach(function (t) {
-      while (cur >= 0 && !canDrop(rows[cur], t)) cur--;
-      if (cur < 0) { tray.push(t); return; }
+      while (cur < TRUCK_ROWS && !canDrop(rows[cur], t)) cur++;
+      if (cur >= TRUCK_ROWS) { tray.push(t); return; }
       rows[cur].push(t);
     });
   });
