@@ -321,6 +321,8 @@ function unitSummary(rk, nm) {
   if (counts.wide) parts.push(counts.wide + 'W');
   if (counts.pallet) parts.push(counts.pallet + 'P');
   if (counts.bin) parts.push(counts.bin + 'B');
+  var ride = (b.customers[nm].units || {}).binRide;
+  if (ride) parts.push('+' + ride + 'B on racks');
   return parts.length ? parts.join(' ') : 'PU';
 }
 
@@ -476,6 +478,9 @@ function renderPop() {
        + '<span class="uc">' + counts[ty] + '</span>'
        + '<button class="pm" data-ty="' + ty + '" data-d="1">+</button></div>';
   });
+  if ((cu.units || {}).binRide) {
+    h += '<div class="row" style="margin-top:4px"><b>' + cu.units.binRide + ' bin' + (cu.units.binRide > 1 ? 's' : '') + ' ride on the racks</b> — no truck spot needed.</div>';
+  }
   var rows = (cu.received || []).map(function (r) { return '<div class="row">' + esc(r.date) + ' &middot; ' + esc(r.desc) + '</div>'; }).join('');
   h += '<div class="rcv">' + (rows || '<div class="row">No receiving detail.</div>') + '</div>';
   document.getElementById('pop').innerHTML = h;
