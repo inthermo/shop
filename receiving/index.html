@@ -1047,7 +1047,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-05a';
+var APP_VERSION = '2026-08-05b';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -2096,7 +2096,8 @@ function jumpToLogDate() {
 // whose Steelhead price is a placeholder (blank / $0 / < $0.50 / exactly $1)
 // get a "$ needs pricing" badge; tapping it expands a pricing panel right
 // under that log row. The decision tree sets how the part is staged; unit
-// price = container rate × quarter-fraction ÷ parts per container. Saving
+// price = container rate × quarter-fraction ÷ parts per container. "Pallet"
+// parts are billed per pallet: rate × how many containers, no parts count. Saving
 // writes the Tracker's "Part Pricing" tab — Will keys the price into
 // Steelhead by hand; the daily 6AM parts-CSV sync then clears the flag for
 // good. "Below min lot charge" records a deliberate no-price decision.
@@ -2206,24 +2207,35 @@ function fmtFrac(f) {
   return whole + (sym || '');
 }
 
+// A "pallet" part is billed per pallet — price = container rate × how many
+// racks/baskets/frames the pallet fills. No parts count involved.
+function isPalletPart(name) { return /pallet/i.test(String(name || '')); }
+
 // Rate + computed unit price for a card's current state. Returns null price
-// until parts-per-container is filled in.
+// until parts-per-container is filled in (pallet parts always have a price).
 function computeCard(s) {
-  var rate, stagedLabel;
+  var pallet = isPalletPart(s.part);
+  var rate, base;
   if (s.staged === 'rack') {
     rate = PRICING_RATES.rack;
-    stagedLabel = 'Rack ×' + s.frac;
+    base = 'Rack';
   } else if (s.staged === 'dead') {
     rate = PRICING_RATES.deadloadFrame;
-    stagedLabel = 'Deadload (per frame)';
+    base = 'Deadload';
   } else {
     rate = PRICING_RATES.basket[s.size] - (s.stackable ? PRICING_RATES.stackableDiscount : 0);
-    stagedLabel = 'Basket-' + s.size + (s.stackable ? ' stackable' : '') + ' ×' + s.frac;
+    base = 'Basket-' + s.size + (s.stackable ? ' stackable' : '');
   }
-  var frac = s.staged === 'dead' ? 1 : s.frac;
+  var frac = (s.staged === 'dead' && !pallet) ? 1 : s.frac;
+  if (pallet) {
+    return { rate: rate, frac: frac, ppc: 0, pallet: true,
+             price: Math.round(rate * frac * 100) / 100,
+             stagedLabel: 'Pallet: ' + base + ' ×' + fmtFrac(frac) };
+  }
   var ppc  = Number(s.ppc);
   var price = ppc > 0 ? Math.round(rate * frac / ppc * 100) / 100 : null;
-  return { rate: rate, frac: frac, ppc: ppc, price: price, stagedLabel: stagedLabel };
+  var stagedLabel = s.staged === 'dead' ? 'Deadload (per frame)' : base + ' ×' + s.frac;
+  return { rate: rate, frac: frac, ppc: ppc, price: price, stagedLabel: stagedLabel, pallet: false };
 }
 
 function pricingCardHtml(i) {
@@ -2247,18 +2259,28 @@ function pricingCardHtml(i) {
       + seg(s.stackable, 'setPq(' + i + ',{stackable:' + !s.stackable + '})', 'Stackable −$' + PRICING_RATES.stackableDiscount)
       + '</div>';
   }
-  if (s.staged !== 'dead') {
+  var pallet = isPalletPart(s.part);
+  if (pallet) {
+    var noun = s.staged === 'rack' ? 'racks' : s.staged === 'dead' ? 'frames' : 'baskets';
+    html += '<div class="pr-lab">How many ' + noun + ' (pallet is the billed unit)</div><div class="pr-row">'
+      + '<button class="pr-step-btn" onclick="stepPqFrac(' + i + ',-0.25)">−</button>'
+      + '<span class="pr-frac">' + fmtFrac(s.frac) + '</span>'
+      + '<button class="pr-step-btn" onclick="stepPqFrac(' + i + ',0.25)">+</button>'
+      + '</div>';
+  } else if (s.staged !== 'dead') {
     html += '<div class="pr-lab">How much of the ' + (s.staged === 'rack' ? 'rack' : 'basket') + '</div><div class="pr-row">'
       + '<button class="pr-step-btn" onclick="stepPqFrac(' + i + ',-0.25)">−</button>'
       + '<span class="pr-frac">' + fmtFrac(s.frac) + '</span>'
       + '<button class="pr-step-btn" onclick="stepPqFrac(' + i + ',0.25)">+</button>'
       + '</div>';
   }
-  html += '<div class="pr-lab">' + (s.staged === 'dead' ? 'Parts per frame' : 'Parts per container') + '</div><div class="pr-row">'
-    + '<input class="pr-num" type="number" min="1" step="1" inputmode="numeric" value="' + (s.ppc || '') + '"'
-    + ' oninput="onPqPpc(' + i + ',this.value)" placeholder="count">'
-    + '</div>'
-    + '<div class="pr-math" id="prMath-' + i + '">' + pricingMathHtml(c) + '</div>'
+  if (!pallet) {
+    html += '<div class="pr-lab">' + (s.staged === 'dead' ? 'Parts per frame' : 'Parts per container') + '</div><div class="pr-row">'
+      + '<input class="pr-num" type="number" min="1" step="1" inputmode="numeric" value="' + (s.ppc || '') + '"'
+      + ' oninput="onPqPpc(' + i + ',this.value)" placeholder="count">'
+      + '</div>';
+  }
+  html += '<div class="pr-math" id="prMath-' + i + '">' + pricingMathHtml(c) + '</div>'
     + '<div class="pr-row">'
     + '<button class="pr-save" id="prSave-' + i + '" onclick="savePricing(' + i + ')"'
     + (c.price ? '' : ' disabled') + '>Save price</button>'
@@ -2269,6 +2291,7 @@ function pricingCardHtml(i) {
 
 function pricingMathHtml(c) {
   var base = '$' + c.rate + (c.frac !== 1 ? ' × ' + fmtFrac(c.frac) : '');
+  if (c.pallet) return base + ' = <span class="pr-price">$' + c.price.toFixed(2) + '</span>/pallet';
   if (!c.price) return base + ' ÷ … parts';
   return base + ' ÷ ' + c.ppc + ' = <span class="pr-price">$' + c.price.toFixed(2) + '</span>/part';
 }
@@ -2320,8 +2343,8 @@ function savePricing(i) {
   if (!c.price) return;
   sendPricingDecision_(i, {
     customer: s.customer, part: s.part, staged: c.stagedLabel,
-    ppc: Number(s.ppc), unitPrice: c.price, recvQty: s.qty
-  }, '✓ $' + c.price.toFixed(2) + '/part saved — ' + s.part);
+    ppc: c.pallet ? '' : Number(s.ppc), unitPrice: c.price, recvQty: s.qty
+  }, '✓ $' + c.price.toFixed(2) + (c.pallet ? '/pallet' : '/part') + ' saved — ' + s.part);
 }
 
 // Deliberate no-price decision: the lot is below the minimum lot charge, so the
