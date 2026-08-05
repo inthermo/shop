@@ -1047,10 +1047,13 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-02b';
+var APP_VERSION = '2026-08-05a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
+var entrySubmitId   = '';   // idempotency key for this form entry — new id per customer
+                            // selection, SAME id across submit retries, so a resubmit
+                            // after a lost/404 response can't duplicate the row
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
 
 // A customer whose instruction note asks for a PO (e.g. "Write PO# from paperwork")
@@ -1407,6 +1410,7 @@ function addCustConfirm() {
 
 function selectCustomer(name) {
   selectedCust = allCustomers.find(function (c) { return c.name === name; }) || { name: name, aliases: [name], items: [], staffNote: '' };
+  entrySubmitId = 'ri-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 
   // Hide search, show badge, switch the working area to two columns
   document.getElementById('quickSection').style.display = 'none';
@@ -1552,6 +1556,7 @@ function initialsCancel() {
 function clearCustomer() {
   selectedCust = null;
   entryInitials = '';
+  entrySubmitId = '';
   document.getElementById('badgeBy').textContent = '';
   document.getElementById('initialsOverlay').classList.remove('visible');
   itemRows = [];
@@ -1862,7 +1867,7 @@ function onSubmit(skipOpenOrderCheck) {
   btn.disabled = true;
   btn.textContent = 'Submitting…';
   var itemNames = activeRows.map(function (r) { return r.name; });
-  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames, by: entryInitials })
+  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames, by: entryInitials, submitId: entrySubmitId })
     .then(function (result) {
       btn.disabled = false; btn.textContent = 'Submit';
       if (result && result.ok) {
@@ -1901,7 +1906,7 @@ function submitMultipleOrders() {
   // Build ALL entries and send them in ONE batch call — the old per-PO serial loop
   // was ~4-5s per PO on the iPad, and a failure mid-loop left the already-saved POs
   // selected so a retry duplicated them.
-  var entries = orders.map(function (o) {
+  var entries = orders.map(function (o, oi) {
     // Use the quantities the worker actually typed in the merged item list,
     // matched back to this PO by part name. qty 0 = not received → omit.
     // Falls back to 'Received' if nothing on this PO was counted, so every
@@ -1926,7 +1931,10 @@ function submitMultipleOrders() {
       poNum:       o.po_number,
       note:        note,
       items:       itemNames,
-      by:          entryInitials
+      by:          entryInitials,
+      // Per-PO idempotency key: form-session id + the PO's openOrders index, which is
+      // stable across a partial-failure retry (retry re-selects the same indices).
+      submitId:    entrySubmitId ? entrySubmitId + ':' + idxs[oi] : ''
     };
   });
 
