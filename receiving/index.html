@@ -39,6 +39,18 @@
       color: #fff;
       border-bottom-color: #e63946;
     }
+    .tab-link {
+      flex: 0 0 auto;
+      align-self: center;
+      padding: 18px 16px;
+      color: #8892a4;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+    .tab-link:active { color: #fff; }
 
     /* ---- PAGES ---- */
     .page { display: none; padding: 16px; max-width: 700px; margin: 0 auto; }
@@ -841,6 +853,7 @@
   <button class="tab-btn"        id="tab-intake"  onclick="switchTab('intake')">Receive</button>
   <button class="tab-btn active" id="tab-log"     onclick="switchTab('log')">Today's Log</button>
   <button class="tab-btn"        id="tab-pickups" onclick="switchTab('pickups')">Pickups</button>
+  <a class="tab-link" href="https://tools.myinthermo.com/planner/">Planner&nbsp;↗</a>
 </div>
 
 <!-- ========== INTAKE PAGE ========== -->
