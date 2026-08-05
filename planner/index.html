@@ -244,6 +244,7 @@ function load(dateOverride) {
 }
 
 function mkTile(customer, type) { return { id: ++tileSeq, customer: customer, type: type }; }
+function isProMfg(nm) { return /^pro[\s.-]*m(fg|anufacturing)/.test(String(nm || '').toLowerCase()); }
 
 function buildBoard(d) {
   board = {}; runOrder = [];
@@ -293,6 +294,11 @@ function buildBoard(d) {
     // stop order: remembered order first (kept only if still known), then anyone new
     var stops = (r.stops || []).filter(function (nm) { return custs[nm] && tiled[nm]; });
     Object.keys(custs).forEach(function (nm) { if (tiled[nm] && stops.indexOf(nm) === -1) stops.push(nm); });
+    // Pro Manufacturing is always the first stop (first off the truck — its racks
+    // land at the door end of the rack block, mid-truck).
+    for (var pi = 1; pi < stops.length; pi++) {
+      if (isProMfg(stops[pi])) { stops.unshift(stops.splice(pi, 1)[0]); break; }
+    }
     var hidden = Object.keys(custs).filter(function (nm) { return !tiled[nm]; }).sort();
 
     board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows, fresh: fresh };
