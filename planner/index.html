@@ -71,24 +71,23 @@
     }
     .stops .addstop:active { opacity: .7; }
 
-    /* ---- print sheet (B/W, one truck per page) ---- */
+    /* ---- print sheet (B/W, all trucks side by side on ONE page) ---- */
     #printArea { display: none; }
     @media print {
       body > .bar, #root, #pop { display: none !important; }
       body { background: #fff; }
-      #printArea { display: block; }
-      #printArea .page { page-break-after: always; padding: 0; color: #000; font-family: Arial, sans-serif; }
-      #printArea .page:last-child { page-break-after: auto; }
-      #printArea h2 { font-size: 18pt; margin: 0 0 2pt; }
-      #printArea .sub { font-size: 10pt; margin: 0 0 10pt; color: #000; }
+      #printArea { display: flex; gap: 14pt; align-items: flex-start; }
+      #printArea .page { flex: 1 1 0; min-width: 0; padding: 0; color: #000; font-family: Arial, sans-serif; page-break-inside: avoid; }
+      #printArea h2 { font-size: 13pt; margin: 0 0 2pt; }
+      #printArea .sub { font-size: 8pt; margin: 0 0 6pt; color: #000; }
       #printArea table { border-collapse: collapse; width: 100%; }
-      #printArea .stops-t { margin-bottom: 12pt; width: auto; min-width: 60%; }
-      #printArea .stops-t th, #printArea .stops-t td { border: 1pt solid #000; padding: 4pt 8pt; font-size: 11pt; text-align: left; }
+      #printArea .stops-t { margin-bottom: 8pt; }
+      #printArea .stops-t th, #printArea .stops-t td { border: 1pt solid #000; padding: 2pt 4pt; font-size: 8.5pt; text-align: left; }
       #printArea .truck-t { table-layout: fixed; }
-      #printArea .truck-t td { border: 1pt solid #000; padding: 8pt 2pt; font-size: 10pt; text-align: center; height: 26pt; overflow: hidden; }
+      #printArea .truck-t td { border: 1pt solid #000; padding: 3pt 1pt; font-size: 8pt; text-align: center; height: 15pt; overflow: hidden; }
       #printArea .truck-t td.filled { background: #eee; font-weight: 700; }
-      #printArea .truck-t .cap { border: 1pt solid #000; background: #000; color: #fff; font-weight: 700; font-size: 10pt; padding: 4pt; text-align: center; }
-      #printArea .unplaced-note { font-size: 10pt; margin-top: 8pt; }
+      #printArea .truck-t .cap { border: 1pt solid #000; background: #000; color: #fff; font-weight: 700; font-size: 8pt; padding: 2pt; text-align: center; }
+      #printArea .unplaced-note { font-size: 8pt; margin-top: 6pt; }
     }
     #pop .addc {
       display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 600;
