@@ -262,13 +262,14 @@ function buildBoard(d) {
     var fresh = false;
     r.customers.forEach(function (c) {
       custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name),
-                        received: c.received || [], units: c.units || { rack: c.rackCount || 0, wide: 0, pallet: 0, bin: 0 } };
+                        received: c.received || [], pickups: c.pickups || [],
+                        units: c.units || { rack: c.rackCount || 0, wide: 0, pallet: 0, bin: 0 } };
     });
     var tray = [];
     var rows = []; for (var i = 0; i < TRUCK_ROWS; i++) rows.push([]);
 
     function ensureCust(nm) {
-      if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], units: { rack: 0, wide: 0, pallet: 0, bin: 0 } };
+      if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], pickups: [], units: { rack: 0, wide: 0, pallet: 0, bin: 0 } };
     }
 
     if (savedV2 && saved.runs[r.key]) {
@@ -295,6 +296,9 @@ function buildBoard(d) {
     var tiled = {};
     tray.forEach(function (t) { if (t.customer) tiled[t.customer] = 1; });
     rows.forEach(function (rw) { rw.forEach(function (t) { if (t.customer) tiled[t.customer] = 1; }); });
+    // A customer with an open pickup request is a stop even with zero racks going out —
+    // the driver needs to see "PU" on the sheet (space on the return trip).
+    Object.keys(custs).forEach(function (nm) { if ((custs[nm].pickups || []).length) tiled[nm] = 1; });
 
     // stop order: remembered order first (kept only if still known), then anyone new
     var stops = (r.stops || []).filter(function (nm) { return custs[nm] && tiled[nm]; });
@@ -334,6 +338,8 @@ function unitSummary(rk, nm) {
   if (counts.bin) parts.push(counts.bin + 'B');
   var ride = (b.customers[nm].units || {}).binRide;
   if (ride) parts.push('+' + ride + 'B on racks');
+  var pk = b.customers[nm].pickups || [];
+  if (pk.length) parts.push('PU' + (pk.some(function (p) { return p.status === 'OVERDUE'; }) ? ' ⚠' : ''));
   return parts.length ? parts.join(' ') : 'PU';
 }
 
@@ -366,7 +372,7 @@ function render() {
     if ((b.hidden || []).length) {
       html += '<button class="addstop" data-run="' + esc(rk) + '">+ Add customer (' + b.hidden.length + ' with no racks)</button>';
     }
-    html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin, PU=pickup only.</div></div>';
+    html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin. PU = pickup at this stop (⚠ = overdue).</div></div>';
 
     // tray
     html += '<div class="tray" data-run="' + esc(rk) + '" data-col="tray"><span class="lbl">Unplaced</span>';
@@ -503,6 +509,12 @@ function renderPop() {
   if ((cu.units || {}).binRide) {
     h += '<div class="row" style="margin-top:4px"><b>' + cu.units.binRide + ' bin' + (cu.units.binRide > 1 ? 's' : '') + ' ride on the racks</b> — no truck spot needed.</div>';
   }
+  (cu.pickups || []).forEach(function (p) {
+    h += '<div class="row" style="margin-top:4px"><b>📦 Pickup'
+       + (p.status === 'OVERDUE' ? ' — OVERDUE' : '')
+       + (p.pickupDay ? ' (' + esc(p.pickupDay) + ')' : '') + ':</b> '
+       + esc(p.summary || 'requested') + '</div>';
+  });
   var rows = (cu.received || []).map(function (r) { return '<div class="row">' + esc(r.date) + ' &middot; ' + esc(r.desc) + '</div>'; }).join('');
   h += '<div class="rcv">' + (rows || '<div class="row">No receiving detail.</div>') + '</div>';
   document.getElementById('pop').innerHTML = h;
@@ -707,6 +719,16 @@ function buildPrintSheet() {
       html += '</tr>';
     });
     html += '<tr><td class="cap" colspan="' + ROW_HALVES + '">▼ REAR DOOR — stop 1, unloads first</td></tr></table>';
+
+    var pks = [];
+    Object.keys(b.customers).forEach(function (nm) {
+      (b.customers[nm].pickups || []).forEach(function (p) {
+        pks.push(esc(b.customers[nm].short) + (p.status === 'OVERDUE' ? ' (overdue since ' + esc(p.pickupDay || '?') + ')' : ''));
+      });
+    });
+    if (pks.length) {
+      html += '<div class="unplaced-note"><b>Pickups — leave room on the return:</b> ' + pks.join(', ') + '</div>';
+    }
 
     var un = b.tray.filter(function (t) { return t.type !== 'bar'; });
     if (un.length) {
