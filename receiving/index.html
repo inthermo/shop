@@ -1083,7 +1083,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-11a';
+var APP_VERSION = '2026-08-11b';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -2452,7 +2452,7 @@ function renderPrices() {
       action = '<button class="pu-btn" onclick="markPriceEntered(' + r.row + ',false)">↩ Undo</button>';
     }
     return '<tr' + (priceTodo(r) ? '' : ' class="done"') + '>'
-      + '<td class="log-col-date">' + esc(String(r.date).split(' ')[0]) + '</td>'
+      + '<td class="log-col-date">' + esc(fmtShortDate(String(r.date).split(' ')[0])) + '</td>'
       + '<td class="log-col-customer">' + esc(r.customer) + '</td>'
       + '<td>' + esc(r.part) + '<div class="log-time">' + detail + '</div></td>'
       + '<td>' + price + '</td>'
