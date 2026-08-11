@@ -853,6 +853,8 @@
       vertical-align: 1px;
     }
     .prc-price { font-size: 17px; font-weight: 700; color: #15803d; white-space: nowrap; }
+    .prc-so { color: #2563eb; font-weight: 600; text-decoration: none; white-space: nowrap; }
+    .prc-so.dim { color: #9ca3af; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -1083,7 +1085,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-11b';
+var APP_VERSION = '2026-08-11c';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -2404,6 +2406,32 @@ function saveBelowMin(i) {
 // =====================================================================
 function priceTodo(r) { return !r.entered && r.unitPrice > 0; }
 
+// Steelhead links for a pricing row: open SOs (from the baked open-orders feed)
+// that carry this part as a line item. Best-effort — a closed SO leaves the feed,
+// so older rows fall back to a link to the SO list instead.
+var STEELHEAD_SO_BASE = 'https://app.gosteelhead.com/Domains/254/SalesOrders';
+function soLinksFor(cust, part) {
+  var raw = _ALL_ORDERS[cust];
+  if (!raw) {
+    var cn = normKey(cust), keys = Object.keys(_ALL_ORDERS);
+    for (var i = 0; i < keys.length; i++) {
+      if (normKey(keys[i]) === cn) { raw = _ALL_ORDERS[keys[i]]; break; }
+    }
+  }
+  var pk = normKey(part);
+  var hits = (raw || []).filter(function (o) {
+    return (o.items || []).some(function (it) { return normKey(it.part_number) === pk; });
+  });
+  if (!hits.length) {
+    return '<a class="prc-so dim" href="' + STEELHEAD_SO_BASE + '" target="_blank" rel="noopener">SO list&nbsp;↗</a>';
+  }
+  return hits.slice(0, 3).map(function (o) {
+    var label = String(o.so_number || ('#' + o.so_id)).replace(/^#0+/, '#');
+    return '<a class="prc-so" href="' + STEELHEAD_SO_BASE + '/' + esc(String(o.so_id)) + '"'
+      + ' target="_blank" rel="noopener">' + esc(label) + '&nbsp;↗</a>';
+  }).join(' ');
+}
+
 function updatePricesCount() {
   var n  = _PRICING.filter(priceTodo).length;
   var el = document.getElementById('pricesCount');
@@ -2456,12 +2484,13 @@ function renderPrices() {
       + '<td class="log-col-customer">' + esc(r.customer) + '</td>'
       + '<td>' + esc(r.part) + '<div class="log-time">' + detail + '</div></td>'
       + '<td>' + price + '</td>'
+      + '<td>' + soLinksFor(r.customer, r.part) + '</td>'
       + '<td>' + (r.entered ? '<span class="pu-chip pu-DONE">✓ entered</span> ' : '') + action + '</td>'
       + '</tr>';
   }).join('');
   document.getElementById('pricesContent').innerHTML =
     '<div class="log-table-wrap"><table class="log-table">'
-    + '<thead><tr><th>Saved</th><th>Customer</th><th>Part</th><th>Unit price</th><th></th></tr></thead>'
+    + '<thead><tr><th>Saved</th><th>Customer</th><th>Part</th><th>Unit price</th><th>Sales order</th><th></th></tr></thead>'
     + '<tbody>' + html + '</tbody></table></div>';
 }
 
