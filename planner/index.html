@@ -94,6 +94,12 @@
       padding: 8px 10px; margin-top: 6px; border: none; border-radius: 8px;
       cursor: pointer; color: #fff;
     }
+    #pop .mvrun {
+      display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 700;
+      padding: 8px 10px; margin-top: 8px; border: 1px dashed rgba(255,255,255,.45); border-radius: 8px;
+      cursor: pointer; color: #fff; background: rgba(255,255,255,.12);
+    }
+    #pop .mvrun:active { opacity: .7; }
 
     /* ---- tray ---- */
     .tray {
@@ -259,8 +265,10 @@ function buildBoard(d) {
 
   firstRuns.forEach(function (r) {
     var custs = {};
+    var routed = {};   // customers the backend routes to THIS run (their "home" truck)
     var fresh = false;
     r.customers.forEach(function (c) {
+      routed[c.name] = 1;
       custs[c.name] = { short: c.shortName || c.name, color: colorFor(c.name),
                         received: c.received || [], pickups: c.pickups || [],
                         units: c.units || { rack: c.rackCount || 0, wide: 0, pallet: 0, bin: 0 } };
@@ -269,8 +277,12 @@ function buildBoard(d) {
     var rows = []; for (var i = 0; i < TRUCK_ROWS; i++) rows.push([]);
 
     function ensureCust(nm) {
-      if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], pickups: [], units: { rack: 0, wide: 0, pallet: 0, bin: 0 } };
+      if (!custs[nm]) custs[nm] = { short: nm, color: colorFor(nm), received: [], pickups: [], units: { rack: 0, wide: 0, pallet: 0, bin: 0 }, stub: true };
     }
+
+    // Pickup-only stops: customer's racks were sent on the OTHER truck this day, but
+    // this (home) truck still stops there to pick up. Persisted in the day's save.
+    var puOnly = (savedV2 && saved.runs[r.key] && saved.runs[r.key].puOnly) || {};
 
     if (savedV2 && saved.runs[r.key]) {
       var sv = saved.runs[r.key];
@@ -299,6 +311,8 @@ function buildBoard(d) {
     // A customer with an open pickup request is a stop even with zero racks going out —
     // the driver needs to see "PU" on the sheet (space on the return trip).
     Object.keys(custs).forEach(function (nm) { if ((custs[nm].pickups || []).length) tiled[nm] = 1; });
+    // Pickup-only stops (racks sent on the other truck) stay visible the same way.
+    Object.keys(puOnly).forEach(function (nm) { if (custs[nm]) tiled[nm] = 1; });
 
     // stop order: remembered order first (kept only if still known), then anyone new
     var stops = (r.stops || []).filter(function (nm) { return custs[nm] && tiled[nm]; });
@@ -310,8 +324,20 @@ function buildBoard(d) {
     }
     var hidden = Object.keys(custs).filter(function (nm) { return !tiled[nm]; }).sort();
 
-    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows, fresh: fresh };
+    board[r.key] = { label: r.label, start: r.start, customers: custs, stops: stops, hidden: hidden, tray: tray, rows: rows, fresh: fresh, routed: routed, puOnly: puOnly };
     runOrder.push(r.key);
+  });
+
+  // Hydrate moved-in customers: a saved cross-truck move leaves stub entries (no counts,
+  // no receiving detail) on the target run — borrow the full record from the home run.
+  runOrder.forEach(function (rk) {
+    var b = board[rk];
+    Object.keys(b.customers).forEach(function (nm) {
+      if (!b.customers[nm].stub) return;
+      runOrder.forEach(function (rk2) {
+        if (rk2 !== rk && board[rk2].customers[nm] && !board[rk2].customers[nm].stub) b.customers[nm] = board[rk2].customers[nm];
+      });
+    });
   });
 
   // Prepopulate the truck on a fresh seed: run the auto-loader so the spots start
@@ -327,8 +353,43 @@ function tileCountAll(b) {
   b.rows.forEach(function (r) { n += r.length; });
   return n;
 }
+function otherRun(rk) {
+  if (runOrder.length !== 2) return null;
+  return runOrder[0] === rk ? runOrder[1] : runOrder[0];
+}
+function tileCountFor(rk, nm) {
+  var n = 0, b = board[rk];
+  function bump(t) { if (t.customer === nm && t.type !== 'bar') n++; }
+  b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
+  return n;
+}
+// Move ALL of a customer's tiles from one truck to the other (e.g. ESC Plymouth rides
+// John's truck, but Randy — its home route — still stops there to pick up: the home
+// run keeps a numbered PU-only stop, like the crew sheet's "ESC Plymouth  PU").
+function moveCustomer(from, to, nm) {
+  var bf = board[from], bt = board[to];
+  var moved = [];
+  bf.tray = bf.tray.filter(function (t) { if (t.customer === nm) { moved.push(t); return false; } return true; });
+  bf.rows = bf.rows.map(function (r) { return r.filter(function (t) { if (t.customer === nm) { moved.push(t); return false; } return true; }); });
+  moved.forEach(function (t) { bt.tray.push(t); });
+  if (!bt.customers[nm]) bt.customers[nm] = bf.customers[nm];
+  delete bt.puOnly[nm];
+  bt.hidden = (bt.hidden || []).filter(function (n) { return n !== nm; });
+  if (bt.stops.indexOf(nm) === -1) bt.stops.push(nm);
+  if (bf.routed[nm]) {
+    bf.puOnly[nm] = 1;                       // home truck still stops there: pickup only
+    if (bf.stops.indexOf(nm) === -1) bf.stops.push(nm);
+  } else {
+    delete bf.puOnly[nm];                    // moving back — drop the temporary stop
+    bf.stops = bf.stops.filter(function (n) { return n !== nm; });
+  }
+  closePop();
+  render(); scheduleSave(); scheduleStopsSave(from); scheduleStopsSave(to);
+}
+
 function unitSummary(rk, nm) {
   var counts = { rack: 0, wide: 0, pallet: 0, bin: 0 }, b = board[rk];
+  if (b.puOnly[nm]) return 'PU';   // racks ride the other truck; this stop is pickup only
   function bump(t) { if (t.customer === nm && counts[t.type] != null) counts[t.type]++; }
   b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
   var parts = [];
@@ -509,6 +570,20 @@ function renderPop() {
   if ((cu.units || {}).binRide) {
     h += '<div class="row" style="margin-top:4px"><b>' + cu.units.binRide + ' bin' + (cu.units.binRide > 1 ? 's' : '') + ' ride on the racks</b> — no truck spot needed.</div>';
   }
+  // Cross-truck: send this customer's racks on the other truck (home run keeps a PU stop),
+  // or bring them back if they were sent over.
+  var ork = otherRun(popCtx.rk);
+  if (ork) {
+    var here = tileCountFor(popCtx.rk, popCtx.nm), there = tileCountFor(ork, popCtx.nm);
+    if (b.puOnly[popCtx.nm]) {
+      h += '<div class="row" style="margin-top:4px"><b>Pickup-only stop</b> — racks ride ' + esc(board[ork].label) + '.</div>';
+    }
+    if (here > 0) {
+      h += '<button class="mvrun" data-from="' + esc(popCtx.rk) + '" data-to="' + esc(ork) + '" data-nm="' + esc(popCtx.nm) + '">→ Send racks on ' + esc(board[ork].label) + '</button>';
+    } else if (there > 0) {
+      h += '<button class="mvrun" data-from="' + esc(ork) + '" data-to="' + esc(popCtx.rk) + '" data-nm="' + esc(popCtx.nm) + '">← Bring racks back to this truck</button>';
+    }
+  }
   (cu.pickups || []).forEach(function (p) {
     h += '<div class="row" style="margin-top:4px"><b>📦 Pickup'
        + (p.status === 'OVERDUE' ? ' — OVERDUE' : '')
@@ -643,7 +718,8 @@ function arrangement() {
     var b = board[rk];
     out.runs[rk] = {
       tray: b.tray.map(slim),
-      rows: b.rows.map(function (r) { return r.map(slim); })
+      rows: b.rows.map(function (r) { return r.map(slim); }),
+      puOnly: b.puOnly
     };
   });
   return out;
@@ -725,6 +801,10 @@ function buildPrintSheet() {
       (b.customers[nm].pickups || []).forEach(function (p) {
         pks.push(esc(b.customers[nm].short) + (p.status === 'OVERDUE' ? ' (overdue since ' + esc(p.pickupDay || '?') + ')' : ''));
       });
+      if (b.puOnly[nm] && !(b.customers[nm].pickups || []).length) {
+        var ork = otherRun(rk);
+        pks.push(esc(b.customers[nm].short) + (ork ? ' (racks on ' + esc(board[ork].label) + ')' : ''));
+      }
     });
     if (pks.length) {
       html += '<div class="unplaced-note"><b>Pickups — leave room on the return:</b> ' + pks.join(', ') + '</div>';
@@ -802,6 +882,8 @@ function openAddPop(rk, x, y) {
 document.getElementById('pop').addEventListener('click', function (e) {
   var pm = e.target.closest ? e.target.closest('.pm') : null;
   if (pm && popCtx) adjType(popCtx.rk, popCtx.nm, pm.getAttribute('data-ty'), parseInt(pm.getAttribute('data-d'), 10));
+  var mvr = e.target.closest ? e.target.closest('.mvrun') : null;
+  if (mvr) { moveCustomer(mvr.getAttribute('data-from'), mvr.getAttribute('data-to'), mvr.getAttribute('data-nm')); return; }
   var addc = e.target.closest ? e.target.closest('.addc') : null;
   if (addc) {
     var rk = addc.getAttribute('data-run'), nm = addc.getAttribute('data-nm');
