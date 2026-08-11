@@ -845,6 +845,14 @@
     .pu-btn:active { background: #f3f4f6; }
     .pu-btn-cancel { border-color: #fca5a5; color: #b91c1c; }
     .pu-btn-done   { border-color: #86efac; color: #15803d; }
+
+    /* ---- Prices tab ---- */
+    .tab-count {
+      background: #f59e0b; color: #fff; border-radius: 10px;
+      font-size: 12px; font-weight: 700; padding: 1px 7px; margin-left: 6px;
+      vertical-align: 1px;
+    }
+    .prc-price { font-size: 17px; font-weight: 700; color: #15803d; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -852,6 +860,7 @@
 <div class="tab-bar">
   <button class="tab-btn"        id="tab-intake"  onclick="switchTab('intake')">Receive</button>
   <button class="tab-btn active" id="tab-log"     onclick="switchTab('log')">Today's Log</button>
+  <button class="tab-btn"        id="tab-prices"  onclick="switchTab('prices')">Prices<span id="pricesCount" class="tab-count" style="display:none"></span></button>
   <button class="tab-btn"        id="tab-pickups" onclick="switchTab('pickups')">Pickups</button>
   <a class="tab-link" href="https://tools.myinthermo.com/planner/">Planner&nbsp;↗</a>
 </div>
@@ -984,6 +993,20 @@
   <div id="logContent" class="loading-msg">Loading…</div>
 </div>
 
+<!-- ========== PRICES PAGE — saved pricing decisions (the Tracker "Part Pricing" tab, ==========
+     surfaced here so nobody has to open the sheet). Worklist for keying unit prices into
+     Steelhead; ✓ stamps col H "Entered in Steelhead". -->
+<div class="page" id="page-prices">
+  <div class="log-toolbar">
+    <select id="prFilterStatus" class="log-filter-sel" onchange="renderPrices()">
+      <option value="todo">To enter in Steelhead</option>
+      <option value="all">All saved prices</option>
+    </select>
+    <button class="log-refresh" onclick="loadPrices()" title="Refresh">↻</button>
+  </div>
+  <div id="pricesContent" class="loading-msg">Loading…</div>
+</div>
+
 <!-- ========== PICKUPS PAGE — pickup requests the SMS agent texted a driver about, ==========
      reconciled against receiving. Tap ✕ to dismiss noise (e.g. TCPC standing pickups). -->
 <div class="page" id="page-pickups">
@@ -1060,7 +1083,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-05b';
+var APP_VERSION = '2026-08-11a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1166,6 +1189,7 @@ function applyBootstrap(res) {
   _PARTS      = res.parts || {};
   _UNPRICED   = res.unpriced || {};
   _PRICING    = (res.pricing && res.pricing.rows) || [];
+  updatePricesCount();
 
   var logDateEl = document.getElementById('logDate');
   logDateEl.value = _TODAY;
@@ -1259,12 +1283,13 @@ function selectTopCustomer(fullName) {
 // TABS
 // =====================================================================
 function switchTab(tab) {
-  ['intake', 'log', 'pickups'].forEach(function (id) {
+  ['intake', 'log', 'prices', 'pickups'].forEach(function (id) {
     document.getElementById('tab-' + id).classList.toggle('active', id === tab);
     document.getElementById('page-' + id).classList.toggle('active', id === tab);
   });
   document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
   if (tab === 'pickups') loadPickups();
+  if (tab === 'prices') loadPrices();
   if (tab === 'log') {
     // The log was baked into bootstrap and already rendered, so opening the tab is
     // instant. Kick a silent background refresh (no "Loading…" wipe) so it stays current.
@@ -2342,6 +2367,7 @@ function sendPricingDecision_(i, payload, toastMsg) {
       return;
     }
     _PRICING.push({ customer: s.customer, part: s.part, staged: payload.staged, ppc: payload.ppc, unitPrice: payload.unitPrice });
+    updatePricesCount();
     showToast(toastMsg, 4000);
     if (_TODAY_LOG && _TODAY_LOG.entries) renderLog(_TODAY_LOG); // clears the badge/card
   }).catch(function () {
@@ -2368,6 +2394,89 @@ function saveBelowMin(i) {
     customer: s.customer, part: s.part, staged: 'Below min lot charge',
     ppc: '', unitPrice: 0, belowMin: true, recvQty: s.qty
   }, '✓ Marked below min lot charge — ' + s.part);
+}
+
+// =====================================================================
+// PRICES TAB — the Tracker "Part Pricing" tab surfaced in the tool, so saved
+// decisions never require opening the sheet. Default view = prices still to be
+// keyed into Steelhead; ✓ stamps "Entered in Steelhead" (col H). Below-min rows
+// need no Steelhead entry, so they only show under "All".
+// =====================================================================
+function priceTodo(r) { return !r.entered && r.unitPrice > 0; }
+
+function updatePricesCount() {
+  var n  = _PRICING.filter(priceTodo).length;
+  var el = document.getElementById('pricesCount');
+  el.textContent = n;
+  el.style.display = n ? '' : 'none';
+}
+
+function loadPrices() {
+  document.getElementById('pricesContent').innerHTML = '<div class="loading-msg">Loading…</div>';
+  call('getPartPricing', {}).then(function (res) {
+    if (!res.ok) {
+      document.getElementById('pricesContent').innerHTML =
+        '<div class="log-empty">Could not load prices: ' + esc(res.error || '?') + '</div>';
+      return;
+    }
+    _PRICING = res.rows || [];   // also freshens the Log tab's badge suppression
+    updatePricesCount();
+    renderPrices();
+  }).catch(function (e) {
+    document.getElementById('pricesContent').innerHTML = '<div class="log-empty">Network error: ' + esc(String(e)) + '</div>';
+  });
+}
+
+function renderPrices() {
+  var filter = document.getElementById('prFilterStatus').value;
+  var rows = _PRICING.filter(function (r) { return filter === 'all' || priceTodo(r); });
+  if (!rows.length) {
+    document.getElementById('pricesContent').innerHTML =
+      '<div class="log-empty">' + (filter === 'all'
+        ? 'No saved prices yet.<br><span style="font-size:13px">Prices saved from the Log tab’s "$ needs pricing" panels show up here.</span>'
+        : 'Nothing left to enter in Steelhead. 🎉') + '</div>';
+    return;
+  }
+  var html = rows.slice().reverse().map(function (r) {  // newest first
+    var price = r.belowMin || !(r.unitPrice > 0)
+      ? '<span style="color:#6b7280">below min</span>'
+      : '<span class="prc-price">$' + r.unitPrice.toFixed(2) + '</span>';
+    var detail = esc(r.staged || '') + (r.ppc ? ' &bull; ' + r.ppc + '/container' : '')
+      + (r.recvQty ? ' &bull; recv ' + r.recvQty : '');
+    var action = '';
+    if (priceTodo(r)) {
+      action = r.row
+        ? '<button class="pu-btn pu-btn-done" onclick="markPriceEntered(' + r.row + ',true)">✓ Entered in Steelhead</button>'
+        : '<span class="log-time">↻ refresh to check off</span>';
+    } else if (r.entered && r.row) {
+      action = '<button class="pu-btn" onclick="markPriceEntered(' + r.row + ',false)">↩ Undo</button>';
+    }
+    return '<tr' + (priceTodo(r) ? '' : ' class="done"') + '>'
+      + '<td class="log-col-date">' + esc(String(r.date).split(' ')[0]) + '</td>'
+      + '<td class="log-col-customer">' + esc(r.customer) + '</td>'
+      + '<td>' + esc(r.part) + '<div class="log-time">' + detail + '</div></td>'
+      + '<td>' + price + '</td>'
+      + '<td>' + (r.entered ? '<span class="pu-chip pu-DONE">✓ entered</span> ' : '') + action + '</td>'
+      + '</tr>';
+  }).join('');
+  document.getElementById('pricesContent').innerHTML =
+    '<div class="log-table-wrap"><table class="log-table">'
+    + '<thead><tr><th>Saved</th><th>Customer</th><th>Part</th><th>Unit price</th><th></th></tr></thead>'
+    + '<tbody>' + html + '</tbody></table></div>';
+}
+
+function markPriceEntered(row, entered) {
+  var r = _PRICING.find(function (x) { return x.row === row; });
+  if (!r) return;
+  r.entered = entered;             // optimistic — instant on the iPad
+  updatePricesCount();
+  renderPrices();
+  call('markPricingEntered', { row: row, customer: r.customer, part: r.part, entered: entered })
+    .then(function (res) {
+      if (!res.ok) { showToast('⚠️ Update failed: ' + (res.error || '?')); loadPrices(); return; }
+      showToast(entered ? '✓ Entered in Steelhead — ' + r.part : '↩ Reopened — ' + r.part);
+    })
+    .catch(function () { showToast('⚠️ Network error — not saved'); loadPrices(); });
 }
 
 // =====================================================================
