@@ -146,6 +146,13 @@
     }
     .divider:active { opacity: .7; }
 
+    .toast {
+      position: fixed; z-index: 200; max-width: 250px; padding: 8px 12px; border-radius: 8px;
+      background: #1f2432; color: #fff; font-size: 12.5px; font-weight: 600;
+      box-shadow: 0 4px 14px rgba(0,0,0,.35); pointer-events: none; transition: opacity .4s;
+    }
+    .toast.gone { opacity: 0; }
+
     .tile {
       touch-action: none; cursor: grab;
       padding: 7px 9px; border-radius: 9px; color: #fff; font-size: 12.5px; font-weight: 600;
@@ -711,6 +718,15 @@ function begin(el, id, run, ev) {
   var src = findTile(id);
   drag = { id: id, run: run, ghost: g, dx: ev.clientX - r.left, dy: ev.clientY - r.top,
            hotEl: null, isBar: !!(src && src.tile.type === 'bar'), lastX: ev.clientX, lastY: ev.clientY, divAt: null };
+  // Auto-scroll while dragging near the top/bottom edge — without this, rows below the
+  // fold are unreachable mid-drag (pointer capture suppresses native scrolling).
+  drag.scroll = setInterval(function () {
+    if (!drag) return;
+    var m = 80, dy = 0;
+    if (drag.lastY < m) dy = -14;
+    else if (drag.lastY > window.innerHeight - m) dy = 14;
+    if (dy) { window.scrollBy(0, dy); hot(drag.lastX, drag.lastY); }
+  }, 16);
 }
 function clearHot() {
   if (!drag.hotEl) return;
@@ -772,11 +788,13 @@ function finish() {
       } else {
         target.classList.add('reject');
         (function (tEl) { setTimeout(function () { tEl.classList.remove('reject'); }, 450); })(target);
+        toast('Row is full — drop on an emptier row or the Unplaced tray', drag.lastX, drag.lastY);
       }
     }
   }
   if (drag.hotEl) clearHot();
   if (drag.ghost) drag.ghost.remove();
+  if (drag.scroll) clearInterval(drag.scroll);
   drag = null;
   render();
   if (ok) scheduleSave();
@@ -784,6 +802,16 @@ function finish() {
 function removeAt(b, src) {
   if (src.where === 'tray') b.tray.splice(src.idx, 1);
   else b.rows[src.where].splice(src.idx, 1);
+}
+
+function toast(msg, x, y) {
+  var t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  t.style.left = Math.max(8, Math.min(x - 100, window.innerWidth - 260)) + 'px';
+  t.style.top = Math.max(8, y - 52) + 'px';
+  document.body.appendChild(t);
+  setTimeout(function () { t.classList.add('gone'); }, 1500);
+  setTimeout(function () { t.remove(); }, 2000);
 }
 
 // ===== save =====
