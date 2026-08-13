@@ -95,6 +95,12 @@
       padding: 8px 10px; margin-top: 6px; border: none; border-radius: 8px;
       cursor: pointer; color: #fff;
     }
+    #pop .rmbtn {
+      display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 700;
+      padding: 8px 10px; margin-top: 8px; border: 1px dashed rgba(255,120,120,.6); border-radius: 8px;
+      cursor: pointer; color: #ffb4b4; background: rgba(255,255,255,.08);
+    }
+    #pop .rmbtn:active { opacity: .7; }
     #pop .mvrun, #pop .pubtn {
       display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 700;
       padding: 8px 10px; margin-top: 8px; border: 1px dashed rgba(255,255,255,.45); border-radius: 8px;
@@ -621,6 +627,10 @@ function renderPop() {
   // Pickup at this stop: toggle the PU flag (driver leaves room on the return trip).
   h += '<button class="pubtn" data-run="' + esc(popCtx.rk) + '" data-nm="' + esc(popCtx.nm) + '">'
      + (b.puOnly[popCtx.nm] ? '✕ Remove pickup from this stop' : '📦 Pickup at this stop') + '</button>';
+  // Not going today: pull every tile off this truck (racks not ready, held back, etc.).
+  if (tileCountFor(popCtx.rk, popCtx.nm) > 0) {
+    h += '<button class="rmbtn" data-run="' + esc(popCtx.rk) + '" data-nm="' + esc(popCtx.nm) + '">✕ Remove from this truck — not going today</button>';
+  }
   // Cross-truck: send this customer's racks on the other truck (home run keeps a PU stop),
   // or bring them back if they were sent over.
   var ork = otherRun(popCtx.rk);
@@ -994,6 +1004,20 @@ document.getElementById('pop').addEventListener('click', function (e) {
   if (pm && popCtx) adjType(popCtx.rk, popCtx.nm, pm.getAttribute('data-ty'), parseInt(pm.getAttribute('data-d'), 10));
   var mvr = e.target.closest ? e.target.closest('.mvrun') : null;
   if (mvr) { moveCustomer(mvr.getAttribute('data-from'), mvr.getAttribute('data-to'), mvr.getAttribute('data-nm')); return; }
+  var rmb = e.target.closest ? e.target.closest('.rmbtn') : null;
+  if (rmb) {
+    var rrk = rmb.getAttribute('data-run'), rnm = rmb.getAttribute('data-nm');
+    var rb = board[rrk];
+    rb.tray = rb.tray.filter(function (t) { return t.customer !== rnm; });
+    rb.rows = rb.rows.map(function (r) { return r.filter(function (t) { return t.customer !== rnm; }); });
+    // a pickup (flag or logged request) keeps the stop on the sheet as PU-only
+    if (!rb.puOnly[rnm] && !(rb.customers[rnm].pickups || []).length) {
+      rb.stops = rb.stops.filter(function (n) { return n !== rnm; });
+      if (rb.hidden.indexOf(rnm) === -1) { rb.hidden.push(rnm); rb.hidden.sort(); }
+    }
+    closePop();
+    render(); scheduleSave(); scheduleStopsSave(rrk); return;
+  }
   var pub = e.target.closest ? e.target.closest('.pubtn') : null;
   if (pub) {
     var prk = pub.getAttribute('data-run'), pnm = pub.getAttribute('data-nm');
