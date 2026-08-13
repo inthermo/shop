@@ -1355,13 +1355,14 @@ document.addEventListener('visibilitychange', function () {
 // page open all day, but _ALL_ORDERS was only fetched at load — SOs entered after
 // that never appeared until someone reloaded (Standard Iron, 2026-07-09). A silent
 // bootstrap re-fetch every 10 min (plus on tab wake, throttled to 4 min) swaps in
-// fresh data. refresh:1 busts the server-side ri_orders cache so "fresh" means the
-// latest TrackerWriter push, not an up-to-30-min-old cached copy.
+// fresh data. refresh:'orders' busts ONLY the server-side ri_orders cache so "fresh"
+// means the latest TrackerWriter push — without cold-starting the other five server
+// caches every 10 min per idle iPad (that's what the old refresh:1 did).
 var _ORDERS_LAST = Date.now();
 function refreshOpenOrders() {
   if (document.hidden) return;
   _ORDERS_LAST = Date.now();
-  call('bootstrap', { refresh: 1 }).then(function (res) {
+  call('bootstrap', { refresh: 'orders' }).then(function (res) {
     if (!res || !res.ok) return;
     try { localStorage.setItem(LS_BOOT_KEY, JSON.stringify(res)); } catch (e) {}
     _ALL_ORDERS = res.orders || {};
