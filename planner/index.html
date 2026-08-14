@@ -169,7 +169,7 @@
       font-size: 9.5px; font-weight: 800; letter-spacing: .05em; padding: 2px 4px;
       border-radius: 4px; background: rgba(255,255,255,.25); flex: 0 0 auto;
     }
-    .tile.t-pallet, .tile.t-bin { border: 2px dashed rgba(255,255,255,.65); }
+    .tile.t-pallet, .tile.t-bin, .tile.t-half { border: 2px dashed rgba(255,255,255,.65); }
     .tile.t-bar { background: #3a4152 !important; justify-content: center; letter-spacing: .1em; }
     .tile.dragging { opacity: .35; }
     .tile.ghost {
@@ -227,12 +227,13 @@ function call(op, payload) {
 // We only plan John's and Randy's FIRST runs; second runs the drivers load themselves.
 // The truck is a grid: TRUCK_ROWS rows of up to 3 spots each. rows[0] = Front of Truck (nose,
 // last stop), rows[TRUCK_ROWS-1] = rear door (first stop, unloads first).
-// Row capacity is measured in half-spots (6 per row): basic rack = 2 (one spot), wide rack =
-// 3 (1.5 spots — Will, 2026-08-05), pallet/bin = 3, load bar takes the full row.
+// Row capacity is measured in quarter-spots (12 per row): basic rack = 4 (one spot),
+// wide rack / pallet / bin = 6 (1.5 spots — Will, 2026-08-05), half-pallet = 3
+// (Will, 2026-08-14: Izza bins + grouped small baskets), load bar takes the full row.
 var TRUCK_ROWS = 8;   // truck fits no more than 8 rows of racks (Will, 2026-07-27)
-var TYPES = ['rack', 'wide', 'pallet', 'bin'];
-var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates' };
-var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', bar: '' };
+var TYPES = ['rack', 'wide', 'pallet', 'bin', 'half'];
+var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates', half: 'Half pallets' };
+var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', half: '½P', bar: '' };
 
 var serviceDate = '';
 var board = {};      // runKey -> { label, start, customers:{name->{short,color,received,units}}, stops:[], tray:[], rows:[[]] }
@@ -251,10 +252,11 @@ function fmtTime(t) {
   var p = t.split(':'); var h = parseInt(p[0], 10); var ap = h >= 12 ? 'PM' : 'AM';
   return ((h + 11) % 12) + 1 + ':' + p[1] + ' ' + ap;
 }
-function isSpecial(t) { return t.type === 'wide' || t.type === 'pallet' || t.type === 'bin'; }
-// Width in half-spots: basic rack = 1 spot, wide rack = 1.5 spots, pallet/bin = 1.5 spots.
-var ROW_HALVES = 6;
-function tileW(t) { return t.type === 'rack' ? 2 : 3; }
+function isSpecial(t) { return t.type === 'wide' || t.type === 'pallet' || t.type === 'bin' || t.type === 'half'; }
+// Width in quarter-spots: basic rack = 1 spot (4), wide/pallet/bin = 1.5 spots (6),
+// half-pallet = 0.75 spot (3).
+var ROW_HALVES = 12;
+function tileW(t) { return t.type === 'rack' ? 4 : (t.type === 'half' ? 3 : 6); }
 function rowUsed(rowArr) {
   var u = 0; for (var i = 0; i < rowArr.length; i++) u += tileW(rowArr[i]); return u;
 }
@@ -280,7 +282,7 @@ function layoutRow(row) {
     else if (t.pos === 'M') M.push(t);
     else if (t.pos === 'R') R.push(t);
     else if (twoRacks) (i === 0 ? L : R).push(t);
-    else if (t.type === 'pallet' || t.type === 'bin') R.push(t);
+    else if (t.type === 'pallet' || t.type === 'bin' || t.type === 'half') R.push(t);
     else L.push(t);
   });
   var out = [], col = 1;
@@ -316,6 +318,36 @@ function load(dateOverride) {
 
 function mkTile(customer, type, pos) { var t = { id: ++tileSeq, customer: customer, type: type }; if (pos) t.pos = pos; return t; }
 function isProMfg(nm) { return /^pro[\s.-]*m(fg|anufacturing)/.test(String(nm || '').toLowerCase()); }
+function normNm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+
+// Standing cross-truck delivery rules (Will, 2026-08-14): John delivers ESC on Monday
+// and Wednesday; Randy — ESC's home route — still stops there to pick up. Matches the
+// customer's normalized name EXACTLY (so ESC Spring Park stays put). Applied on fresh
+// seeds only, so a crew "bring racks back" in a saved layout isn't fought on reload.
+// days: 1=Mon … 5=Fri. toDriver: prefix of the target run's label, lowercased.
+var CROSS_DELIVERY_RULES = [
+  { nm: /^esc electrostatic corp$/, days: [1, 3], toDriver: 'john' }
+];
+function applyCrossRules() {
+  var day = new Date(serviceDate + 'T12:00:00').getDay();
+  CROSS_DELIVERY_RULES.forEach(function (rule) {
+    if (rule.days.indexOf(day) === -1) return;
+    runOrder.forEach(function (rk) {
+      var b = board[rk];
+      if (!b.fresh) return;
+      Object.keys(b.customers).forEach(function (nm) {
+        if (!rule.nm.test(normNm(nm)) || !b.routed[nm]) return;
+        var to = null;
+        runOrder.forEach(function (rk2) {
+          if (rk2 !== rk && normNm(board[rk2].label).indexOf(rule.toDriver) === 0) to = rk2;
+        });
+        if (!to || !tileCountFor(rk, nm)) return;
+        moveCustomerCore(rk, to, nm);
+        scheduleStopsSave(rk); scheduleStopsSave(to);
+      });
+    });
+  });
+}
 
 function buildBoard(d) {
   board = {}; runOrder = [];
@@ -408,8 +440,10 @@ function buildBoard(d) {
     });
   });
 
-  // Prepopulate the truck on a fresh seed: run the auto-loader so the spots start
-  // filled per the algorithm (stop order, wide/pallet rules); crew adjusts from there.
+  // Standing rules first (e.g. ESC rides John's truck Mon/Wed), then prepopulate the
+  // truck on a fresh seed: run the auto-loader so the spots start filled per the
+  // algorithm (stop order, wide/pallet rules); crew adjusts from there.
+  applyCrossRules();
   runOrder.forEach(function (rk) {
     if (board[rk].fresh) autoLoad(rk);
   });
@@ -434,7 +468,7 @@ function tileCountFor(rk, nm) {
 // Move ALL of a customer's tiles from one truck to the other (e.g. ESC Plymouth rides
 // John's truck, but Randy — its home route — still stops there to pick up: the home
 // run keeps a numbered PU-only stop, like the crew sheet's "ESC Plymouth  PU").
-function moveCustomer(from, to, nm) {
+function moveCustomerCore(from, to, nm) {
   var bf = board[from], bt = board[to];
   var moved = [];
   bf.tray = bf.tray.filter(function (t) { if (t.customer === nm) { moved.push(t); return false; } return true; });
@@ -451,12 +485,15 @@ function moveCustomer(from, to, nm) {
     delete bf.puOnly[nm];                    // moving back — drop the temporary stop
     bf.stops = bf.stops.filter(function (n) { return n !== nm; });
   }
+}
+function moveCustomer(from, to, nm) {
+  moveCustomerCore(from, to, nm);
   closePop();
   render(); scheduleSave(); scheduleStopsSave(from); scheduleStopsSave(to);
 }
 
 function unitSummary(rk, nm) {
-  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0 }, b = board[rk];
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, half: 0 }, b = board[rk];
   function bump(t) { if (t.customer === nm && counts[t.type] != null) counts[t.type]++; }
   b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
   var parts = [];
@@ -464,6 +501,7 @@ function unitSummary(rk, nm) {
   if (counts.wide) parts.push(counts.wide + 'W');
   if (counts.pallet) parts.push(counts.pallet + 'P');
   if (counts.bin) parts.push(counts.bin + 'B');
+  if (counts.half) parts.push(counts.half + '½P');
   var ride = (b.customers[nm].units || {}).binRide;
   if (ride) parts.push('+' + ride + 'B on racks');
   var pk = b.customers[nm].pickups || [];
@@ -503,7 +541,7 @@ function render() {
     if ((b.hidden || []).length) {
       html += '<button class="addstop" data-run="' + esc(rk) + '">+ Add customer (' + b.hidden.length + ' with no racks)</button>';
     }
-    html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin. PU = pickup at this stop (⚠ = overdue). Tiles keep the side you drop them on. Drag a load bar between rows; tap it to remove.</div></div>';
+    html += '<div class="note">Tap a name to edit rack / pallet counts. R=rack W=wide P=pallet B=bin ½P=half-pallet. PU = pickup at this stop (⚠ = overdue). Tiles keep the side you drop them on; drag a tile onto the other truck to move it there. Drag a load bar between rows; tap it to remove.</div></div>';
 
     // tray
     html += '<div class="tray" data-run="' + esc(rk) + '" data-col="tray"><span class="lbl">Unplaced</span>';
@@ -578,6 +616,20 @@ function autoLoad(rk) {
     });
   });
 
+  // half-pallets: tuck beside the pallets/bins by the door where they fit,
+  // otherwise take the next row up
+  order.forEach(function (nm) {
+    byCust[nm].filter(function (t) { return t.type === 'half'; }).forEach(function (t) {
+      var placed = false;
+      for (var r = TRUCK_ROWS - 1; r > pr && !placed; r--) {
+        if (canDrop(rows[r], t)) { rows[r].push(t); placed = true; }
+      }
+      if (!placed) {
+        if (pr >= 0) rows[pr--].push(t); else tray.push(t);
+      }
+    });
+  });
+
   // racks & wides: packed flush against the FRONT wall so they strap to it (Will,
   // 2026-07-27) — last stop goes at the nose, then each earlier stop behind it, so
   // unload order at the rear door still matches the route. Any slack ends up by the
@@ -611,7 +663,7 @@ function openPop(rk, nm, x, y) {
 function renderPop() {
   if (!popCtx) return;
   var b = board[popCtx.rk], cu = b.customers[popCtx.nm];
-  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0 };
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, half: 0 };
   function bump(t) { if (t.customer === popCtx.nm && counts[t.type] != null) counts[t.type]++; }
   b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
   var h = '<b>' + esc(popCtx.nm) + '</b>';
@@ -747,7 +799,9 @@ function hot(x, y) {
   drag.lastX = x; drag.lastY = y;
   var el = document.elementFromPoint(x, y);
   var target = el && el.closest ? el.closest('.trow, .tray') : null;
-  if (target && target.getAttribute('data-run') !== drag.run) target = null; // stay within the run
+  // Load bars stay within their run (dividers are per-truck); rack/pallet/bin tiles
+  // may be dragged straight onto the OTHER truck's rows or tray (Will, 2026-08-14).
+  if (target && drag.isBar && target.getAttribute('data-run') !== drag.run) target = null;
   if (drag.hotEl && drag.hotEl !== target) clearHot();
   drag.hotEl = target;
   if (!target) return;
@@ -765,15 +819,18 @@ function hot(x, y) {
 function finish() {
   var src = findTile(drag.id);
   var target = drag.hotEl;
-  var ok = false;
+  var ok = false, crossed = null;
   if (src && target) {
     var b = board[src.rk];
+    var trk = target.getAttribute('data-run');
+    var tb = board[trk];                       // target board (may be the other truck)
     if (target.classList.contains('tray')) {
-      if (!(drag.isBar && src.where === 'tray')) {
+      if (!(drag.isBar && src.where === 'tray' && trk === src.rk)) {
         removeAt(b, src);
         delete src.tile.pos;   // back in the tray = no chosen side
-        b.tray.push(src.tile);
+        tb.tray.push(src.tile);
         ok = true;
+        if (trk !== src.rk) crossed = trk;
       }
     } else if (drag.isBar) {
       // snap the load bar in as a divider at the highlighted boundary
@@ -784,8 +841,8 @@ function finish() {
       }
     } else {
       var ri = parseInt(target.getAttribute('data-row'), 10);
-      var rowArr = b.rows[ri];
-      var sameRow = (src.where === ri);
+      var rowArr = tb.rows[ri];
+      var sameRow = (trk === src.rk && src.where === ri);
       var check = sameRow ? rowArr.filter(function (t) { return t.id !== src.tile.id; }) : rowArr;
       if (canDrop(check, src.tile)) {
         removeAt(b, src);
@@ -793,14 +850,16 @@ function finish() {
         var r = target.getBoundingClientRect();
         var f = (drag.lastX - r.left) / r.width;
         src.tile.pos = f < 0.34 ? 'L' : (f < 0.66 ? 'M' : 'R');
-        b.rows[ri].push(src.tile);
+        tb.rows[ri].push(src.tile);
         ok = true;
+        if (trk !== src.rk) crossed = trk;
       } else {
         target.classList.add('reject');
         (function (tEl) { setTimeout(function () { tEl.classList.remove('reject'); }, 450); })(target);
         toast('Row is full — drop on an emptier row or the Unplaced tray', drag.lastX, drag.lastY);
       }
     }
+    if (crossed) crossMoved(src.rk, crossed, src.tile.customer);
   }
   if (drag.hotEl) clearHot();
   if (drag.ghost) drag.ghost.remove();
@@ -812,6 +871,25 @@ function finish() {
 function removeAt(b, src) {
   if (src.where === 'tray') b.tray.splice(src.idx, 1);
   else b.rows[src.where].splice(src.idx, 1);
+}
+
+// A single tile was dragged onto the other truck: keep customer records and stop
+// lists consistent on both boards (same semantics as the whole-customer move, but
+// the customer may end up with tiles on BOTH trucks).
+function crossMoved(from, to, nm) {
+  var bf = board[from], bt = board[to];
+  if (!bt.customers[nm]) bt.customers[nm] = bf.customers[nm];
+  bt.hidden = (bt.hidden || []).filter(function (n) { return n !== nm; });
+  if (bt.stops.indexOf(nm) === -1) bt.stops.push(nm);
+  if (!tileCountFor(from, nm)) {
+    if (bf.routed[nm]) {
+      bf.puOnly[nm] = 1;                     // home truck still stops there: pickup only
+      if (bf.stops.indexOf(nm) === -1) bf.stops.push(nm);
+    } else if (!bf.puOnly[nm] && !(bf.customers[nm].pickups || []).length) {
+      bf.stops = bf.stops.filter(function (n) { return n !== nm; });  // last tile left
+    }
+  }
+  scheduleStopsSave(from); scheduleStopsSave(to);
 }
 
 function toast(msg, x, y) {
@@ -875,19 +953,20 @@ function buildPrintSheet() {
     });
     html += '</table>';
 
-    // 6 columns = half-spots: basic rack spans 2 (1 spot), wide/pallet/bin span 3 (1.5 spots)
+    // 12 columns = quarter-spots: basic rack spans 4 (1 spot), wide/pallet/bin span 6
+    // (1.5 spots), half-pallet spans 3 (0.75 spot)
     html += '<table class="truck-t"><colgroup>';
     for (var ci = 0; ci < ROW_HALVES; ci++) html += '<col style="width:' + (100 / ROW_HALVES) + '%">';
     html += '</colgroup>';
     html += '<tr><td class="cap" colspan="' + ROW_HALVES + '">▲ FRONT OF TRUCK — strap racks here — last stop</td></tr>';
     function tdFor(t) {
-      var tag = t.type !== 'rack' ? ' (' + t.type.toUpperCase() + ')' : '';
+      var tag = TYPE_TAG[t.type] ? ' (' + TYPE_TAG[t.type] + ')' : '';
       return '<td class="filled" colspan="' + tileW(t) + '">' + esc(b.customers[t.customer] ? b.customers[t.customer].short : t.customer) + tag + '</td>';
     }
-    function emptyTds(halves) {
+    function emptyTds(quarters) {
       var h = '';
-      while (halves >= 2) { h += '<td colspan="2"></td>'; halves -= 2; }
-      if (halves === 1) h += '<td></td>';
+      while (quarters >= 4) { h += '<td colspan="4"></td>'; quarters -= 4; }
+      if (quarters > 0) h += '<td colspan="' + quarters + '"></td>';
       return h;
     }
     function barRow() { return '<tr><td class="barrow" colspan="' + ROW_HALVES + '">— LOAD BAR —</td></tr>'; }
