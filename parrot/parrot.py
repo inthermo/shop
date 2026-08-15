@@ -23,7 +23,9 @@ import winsound
 
 SAMPLE_RATE = 16000
 MIN_SECONDS = 0.35          # ignore accidental taps
-MODEL_NAME = "small.en"     # ~250 MB download on first run
+# Override per machine with a user env var PARROT_MODEL (e.g. "base.en" on slow PCs,
+# ~3x faster than small.en with slightly lower accuracy; "tiny.en" faster still).
+MODEL_NAME = os.environ.get("PARROT_MODEL", "small.en")  # small.en = ~250 MB download on first run
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
