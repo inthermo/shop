@@ -34,6 +34,13 @@ Write-Host "Installing Python packages (faster-whisper etc.)..."
 & py -3.12 -m pip install --quiet --disable-pip-version-check faster-whisper sounddevice keyboard numpy
 if ($LASTEXITCODE -ne 0) { throw "pip install failed - see output above." }
 
+# --- 3b. Visual C++ runtime (ctranslate2.dll needs it; missing on fresh PCs) ---
+$vc = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+if (-not $vc -or -not $vc.Installed) {
+    Write-Host "Installing Microsoft Visual C++ runtime (expect a UAC prompt - click Yes)..."
+    winget install --id Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
+}
+
 # --- 4. Start hidden at logon (Startup folder, no admin needed) ---
 $pyexe = (& py -3.12 -c "import sys; print(sys.executable)").Trim()
 $pythonw = $pyexe -replace "python\.exe$", "pythonw.exe"
