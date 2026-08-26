@@ -231,9 +231,9 @@ function call(op, payload) {
 // wide rack / pallet / bin = 6 (1.5 spots — Will, 2026-08-05), half-pallet = 3
 // (Will, 2026-08-14: Izza bins + grouped small baskets), load bar takes the full row.
 var TRUCK_ROWS = 8;   // truck fits no more than 8 rows of racks (Will, 2026-07-27)
-var TYPES = ['rack', 'wide', 'pallet', 'bin', 'half'];
-var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates', half: 'Half pallets' };
-var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', half: '½P', bar: '' };
+var TYPES = ['rack', 'wide', 'pallet', 'bin', 'mbasket', 'half'];
+var TYPE_LABEL = { rack: 'Racks', wide: 'Wide racks', pallet: 'Pallets', bin: 'Bins/crates', mbasket: 'Med baskets', half: 'Half pallets' };
+var TYPE_TAG = { wide: 'WIDE', pallet: 'PLT', bin: 'BIN', mbasket: 'MB', half: '½P', bar: '' };
 
 var serviceDate = '';
 var board = {};      // runKey -> { label, start, customers:{name->{short,color,received,units}}, stops:[], tray:[], rows:[[]] }
@@ -252,11 +252,11 @@ function fmtTime(t) {
   var p = t.split(':'); var h = parseInt(p[0], 10); var ap = h >= 12 ? 'PM' : 'AM';
   return ((h + 11) % 12) + 1 + ':' + p[1] + ' ' + ap;
 }
-function isSpecial(t) { return t.type === 'wide' || t.type === 'pallet' || t.type === 'bin' || t.type === 'half'; }
+function isSpecial(t) { return t.type === 'wide' || t.type === 'pallet' || t.type === 'bin' || t.type === 'mbasket' || t.type === 'half'; }
 // Width in quarter-spots: basic rack = 1 spot (4), wide/pallet/bin = 1.5 spots (6),
-// half-pallet = 0.75 spot (3).
+// medium basket = 1 spot (4), half-pallet = 0.75 spot (3).
 var ROW_HALVES = 12;
-function tileW(t) { return t.type === 'rack' ? 4 : (t.type === 'half' ? 3 : 6); }
+function tileW(t) { return (t.type === 'rack' || t.type === 'mbasket') ? 4 : (t.type === 'half' ? 3 : 6); }
 function rowUsed(rowArr) {
   var u = 0; for (var i = 0; i < rowArr.length; i++) u += tileW(rowArr[i]); return u;
 }
@@ -282,7 +282,7 @@ function layoutRow(row) {
     else if (t.pos === 'M') M.push(t);
     else if (t.pos === 'R') R.push(t);
     else if (twoRacks) (i === 0 ? L : R).push(t);
-    else if (t.type === 'pallet' || t.type === 'bin' || t.type === 'half') R.push(t);
+    else if (t.type === 'pallet' || t.type === 'bin' || t.type === 'mbasket' || t.type === 'half') R.push(t);
     else L.push(t);
   });
   var out = [], col = 1;
@@ -493,7 +493,7 @@ function moveCustomer(from, to, nm) {
 }
 
 function unitSummary(rk, nm) {
-  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, half: 0 }, b = board[rk];
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, mbasket: 0, half: 0 }, b = board[rk];
   function bump(t) { if (t.customer === nm && counts[t.type] != null) counts[t.type]++; }
   b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
   var parts = [];
@@ -501,6 +501,7 @@ function unitSummary(rk, nm) {
   if (counts.wide) parts.push(counts.wide + 'W');
   if (counts.pallet) parts.push(counts.pallet + 'P');
   if (counts.bin) parts.push(counts.bin + 'B');
+  if (counts.mbasket) parts.push(counts.mbasket + 'MB');
   if (counts.half) parts.push(counts.half + '½P');
   var ride = (b.customers[nm].units || {}).binRide;
   if (ride) parts.push('+' + ride + 'B on racks');
@@ -611,7 +612,7 @@ function autoLoad(rk) {
   // pallets & bins: one per row from the door up (render pushes them right)
   var pr = TRUCK_ROWS - 1;
   order.forEach(function (nm) {
-    byCust[nm].filter(function (t) { return t.type === 'pallet' || t.type === 'bin'; }).forEach(function (t) {
+    byCust[nm].filter(function (t) { return t.type === 'pallet' || t.type === 'bin' || t.type === 'mbasket'; }).forEach(function (t) {
       if (pr >= 0) rows[pr--].push(t); else tray.push(t);
     });
   });
@@ -663,7 +664,7 @@ function openPop(rk, nm, x, y) {
 function renderPop() {
   if (!popCtx) return;
   var b = board[popCtx.rk], cu = b.customers[popCtx.nm];
-  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, half: 0 };
+  var counts = { rack: 0, wide: 0, pallet: 0, bin: 0, mbasket: 0, half: 0 };
   function bump(t) { if (t.customer === popCtx.nm && counts[t.type] != null) counts[t.type]++; }
   b.tray.forEach(bump); b.rows.forEach(function (r) { r.forEach(bump); });
   var h = '<b>' + esc(popCtx.nm) + '</b>';
