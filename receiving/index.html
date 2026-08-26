@@ -1085,7 +1085,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-19a';
+var APP_VERSION = '2026-08-26a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1093,6 +1093,7 @@ var entrySubmitId   = '';   // idempotency key for this form entry — new id pe
                             // selection, SAME id across submit retries, so a resubmit
                             // after a lost/404 response can't duplicate the row
 var poIsRequired    = false; // set from the customer's instruction note (mentions a PO)
+var poDateIsPo      = false; // customer's convention IS a date PO (Verbal/MMDDYY notes) — skip the date-entry reminder
 
 // A customer whose instruction note asks for a PO (e.g. "Write PO# from paperwork")
 // should get a Required PO field, not "Optional".
@@ -1119,6 +1120,21 @@ function noteWantsVerbalPo(noteText) {
 // date MMDDYY") means the PO is just today's date — auto-fill it bare.
 function noteWantsDatePo(noteText) {
   return /mmddyy/i.test(noteText || '');
+}
+
+// True when a manually-typed PO value looks like the date received instead of a
+// real PO number: explicit date shapes (8/26, 08-26-26, 8.26.2026) or a plain
+// digit string equal to TODAY as MMDDYY / MMDDYYYY / YYYYMMDD. Plain digits only
+// match today so real 6-8 digit PO numbers never trigger the reminder.
+function poLooksLikeDate(po) {
+  var v = (po || '').trim();
+  if (!v) return false;
+  if (/^\d{1,2}[\/\-.]\d{1,2}([\/\-.]\d{2,4})?$/.test(v)) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return true;
+  if (!/^\d{6}$|^\d{8}$/.test(v)) return false;
+  var d = new Date();
+  var mm = pad2(d.getMonth() + 1), dd = pad2(d.getDate()), yyyy = String(d.getFullYear());
+  return v === mm + dd + yyyy.slice(-2) || v === mm + dd + yyyy || v === yyyy + mm + dd;
 }
 
 // Today's date as MMDDYY, e.g. 070726.
@@ -1522,6 +1538,7 @@ function selectCustomer(name) {
   document.getElementById('poHint').textContent = '';
   var poInputEl = document.getElementById('poInput');
   var poLabelEl = document.getElementById('poLabel');
+  poDateIsPo = noteWantsVerbalPo(noteText) || noteWantsDatePo(noteText);
   if (noteWantsVerbalPo(noteText)) {
     // No real PO — auto-fill "Verbal MMDDYY" and leave it editable, not required.
     poIsRequired = false;
@@ -1608,6 +1625,7 @@ function clearCustomer() {
   selectedCust = null;
   entryInitials = '';
   entrySubmitId = '';
+  poDateIsPo = false;
   document.getElementById('badgeBy').textContent = '';
   document.getElementById('initialsOverlay').classList.remove('visible');
   itemRows = [];
@@ -1908,6 +1926,17 @@ function onSubmit(skipOpenOrderCheck) {
   if (poIsRequired && !poNum) {
     if (!confirm('Are you sure you want to submit without a PO?')) {
       document.getElementById('poInput').focus();
+      return;
+    }
+  }
+  // Typed value looks like the date received, not a PO — remind the worker to
+  // grab the real PO number off the paperwork (skipped for customers whose
+  // convention IS a date PO, e.g. Wenger/verbal auto-fill).
+  if (poNum && !poDateIsPo && poLooksLikeDate(poNum)) {
+    if (!confirm('⚠️ "' + poNum + '" looks like a date, not a PO number.\n\nGrab the PO number from the paperwork.\n\nSubmit with "' + poNum + '" anyway?')) {
+      var poEl = document.getElementById('poInput');
+      poEl.focus();
+      poEl.select();
       return;
     }
   }
