@@ -74,7 +74,7 @@
     /* ---- print sheet (B/W, all trucks side by side on ONE page) ---- */
     #printArea { display: none; }
     @media print {
-      body > .bar, #root, #pop { display: none !important; }
+      body > .bar, #root, #pop, #ctx { display: none !important; }
       body { background: #fff; }
       #printArea { display: flex; gap: 14pt; align-items: flex-start; }
       #printArea .page { flex: 1 1 0; min-width: 0; padding: 0; color: #000; font-family: Arial, sans-serif; page-break-inside: avoid; }
@@ -183,6 +183,17 @@
       background: #1a1a2e; color: #fff; font-size: 13px; line-height: 1.4;
       padding: 12px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.4); display: none;
     }
+    #ctx {
+      position: fixed; z-index: 210; width: 240px; max-width: calc(100vw - 16px);
+      background: #1a1a2e; color: #fff; font-size: 13px;
+      padding: 8px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.4); display: none;
+    }
+    #ctx button {
+      display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 700;
+      padding: 8px 10px; border: 1px dashed rgba(255,255,255,.45); border-radius: 8px;
+      cursor: pointer; color: #fff; background: rgba(255,255,255,.12);
+    }
+    #ctx button:active { opacity: .7; }
     #pop b { display: block; margin-bottom: 8px; font-size: 14px; }
     #pop .urow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
     #pop .urow .ulbl { flex: 1; color: #cfd6e6; font-weight: 600; }
@@ -210,6 +221,7 @@
   <div id="root"><div class="empty">Loading…</div></div>
   <div id="printArea"></div>
   <div id="pop"></div>
+  <div id="ctx"></div>
 
 <script>
 // ===== backend =====
@@ -893,6 +905,39 @@ function crossMoved(from, to, nm) {
   }
   scheduleStopsSave(from); scheduleStopsSave(to);
 }
+
+// ===== right-click / context menu on a tile: quick "move to other truck" =====
+// (mouse convenience — on iPad the crew drags the tile across instead)
+function closeCtx() { document.getElementById('ctx').style.display = 'none'; }
+document.addEventListener('contextmenu', function (e) {
+  var el = e.target.closest ? e.target.closest('.tile') : null;
+  closeCtx();
+  if (!el || el.classList.contains('t-bar')) return;
+  var id = parseInt(el.getAttribute('data-id'), 10);
+  var rk = el.getAttribute('data-run');
+  var ork = otherRun(rk);
+  if (!ork) return;
+  e.preventDefault();
+  var ctx = document.getElementById('ctx');
+  ctx.innerHTML = '<button id="ctxmv">→ Move to ' + esc(board[ork].label) + '</button>';
+  ctx.style.display = 'block';
+  var w = ctx.offsetWidth, h = ctx.offsetHeight;
+  ctx.style.left = Math.max(8, Math.min(e.clientX, window.innerWidth - w - 8)) + 'px';
+  ctx.style.top = Math.max(8, Math.min(e.clientY + 4, window.innerHeight - h - 8)) + 'px';
+  document.getElementById('ctxmv').addEventListener('click', function () {
+    closeCtx();
+    var src = findTile(id);
+    if (!src) return;
+    removeAt(board[src.rk], src);
+    delete src.tile.pos;                     // lands in the other truck's Unplaced tray
+    board[ork].tray.push(src.tile);
+    crossMoved(src.rk, ork, src.tile.customer);
+    render(); scheduleSave();
+  });
+});
+document.addEventListener('pointerdown', function (e) {
+  if (!(e.target.closest && e.target.closest('#ctx'))) closeCtx();
+});
 
 function toast(msg, x, y) {
   var t = document.createElement('div');
