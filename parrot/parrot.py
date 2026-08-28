@@ -11,6 +11,7 @@ this file. Beeps: high = recording, low = stopped, two rising = ready,
 buzz = nothing transcribed.
 """
 
+import ctypes
 import logging
 import os
 import sys
@@ -50,6 +51,24 @@ def win_pressed():
 
 def combo_pressed():
     return keyboard.is_pressed("ctrl") and win_pressed()
+
+
+def foreground_title():
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    buf = ctypes.create_unicode_buffer(512)
+    ctypes.windll.user32.GetWindowTextW(hwnd, buf, 512)
+    return buf.value
+
+
+def type_text(text):
+    # Remote-desktop clients (Chrome Remote Desktop) can't forward the raw
+    # unicode events keyboard.write uses by default on Windows (VK_PACKET) —
+    # the remote session never sees them. When the focused window is CRD,
+    # type with real virtual-key presses instead, paced so none get dropped.
+    if "Chrome Remote Desktop" in foreground_title():
+        keyboard.write(text, delay=0.01, exact=False)
+    else:
+        keyboard.write(text)
 
 
 def beep(freq, ms):
@@ -130,7 +149,7 @@ def main():
         while combo_pressed() or keyboard.is_pressed("ctrl") or win_pressed():
             time.sleep(0.02)
         time.sleep(0.12)
-        keyboard.write(text + " ")
+        type_text(text + " ")
 
 
 if __name__ == "__main__":
