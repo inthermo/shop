@@ -976,7 +976,7 @@ function scheduleStopsSave(rk) {
   clearTimeout(stopsTimer);
   stopsTimer = setTimeout(function () {
     Object.keys(stopsDirty).forEach(function (k) {
-      call('saveStops', { runKey: k, stops: board[k].stops });
+      call('saveStops', { runKey: k, stops: board[k].stops, serviceDate: serviceDate });
     });
     stopsDirty = {};
   }, 1000);
