@@ -1069,7 +1069,10 @@
 // read the response. The auth token never leaves the server — it lives in the
 // backend's Script Properties, exactly as before.
 // =====================================================================
-var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec';
+// Served from the shop server (LAN/tailnet): call same-origin /api proxy, which injects
+// the backend token server-side. On the legacy public copy, fall back to the direct /exec URL.
+var IS_LEGACY_HOST = /(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname);
+var BACKEND_URL = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec' : '/api/receiving';
 
 function call(op, payload) {
   return fetch(BACKEND_URL, {
@@ -1085,7 +1088,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-26a';
+var APP_VERSION = '2026-08-31a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection

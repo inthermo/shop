@@ -66,7 +66,10 @@
 <footer>Inthermo LLC · automation status board · auto-refreshes every 30s</footer>
 
 <script>
-var BACKEND = 'https://script.google.com/macros/s/AKfycbz2a5RrKppPbO_axavcyqCOLI6LKrrzRLpd2qVkxzSchAflV9CHwGVIOuLamh5YC8VP/exec';
+// Served from the shop server (LAN/tailnet): call same-origin /api proxy, which injects
+// the backend token server-side. On the legacy public copy, fall back to the direct /exec URL.
+var IS_LEGACY_HOST = /(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname);
+var BACKEND = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycbz2a5RrKppPbO_axavcyqCOLI6LKrrzRLpd2qVkxzSchAflV9CHwGVIOuLamh5YC8VP/exec' : '/api/status';
 var TZ = 'America/Chicago';
 var openIds = {};
 

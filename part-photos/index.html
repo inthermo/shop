@@ -92,7 +92,10 @@
 <div id="toast"></div>
 
 <script>
-var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec';
+// Served from the shop server (LAN/tailnet): call same-origin /api proxy, which injects
+// the backend token server-side. On the legacy public copy, fall back to the direct /exec URL.
+var IS_LEGACY_HOST = /(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname);
+var BACKEND_URL = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec' : '/api/receiving';
 
 function call(op, payload) {
   return fetch(BACKEND_URL, {

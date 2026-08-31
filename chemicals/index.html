@@ -113,7 +113,10 @@
 </div>
 
 <script>
-var BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzQruwzzt9pc8DaieZNj6vxtS974e4_cdwex2I-TQIWRHdg3fN3Kg-hxyGzN3Pn4Q-9/exec';
+// Served from the shop server (LAN/tailnet): call same-origin /api proxy, which injects
+// the backend token server-side. On the legacy public copy, fall back to the direct /exec URL.
+var IS_LEGACY_HOST = /(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname);
+var BACKEND_URL = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycbzQruwzzt9pc8DaieZNj6vxtS974e4_cdwex2I-TQIWRHdg3fN3Kg-hxyGzN3Pn4Q-9/exec' : '/api/chemicals';
 var TOKEN = 'acd17f084882ea6134f9415cd5a4b96d';
 var STATE = null;
 
