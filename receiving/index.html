@@ -1088,7 +1088,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-31b';
+var APP_VERSION = '2026-08-31c';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1926,10 +1926,10 @@ function onSubmit(skipOpenOrderCheck) {
   if (!activeRows.length) { showToast('Add at least one item', 3000); return; }
   var description = activeRows.map(function (r) { return r.qty + '× ' + r.name; }).join(', ');
   var poNum = document.getElementById('poInput').value.trim();
-  // Bell Manufacturing: PO is "on file" so the field shows Optional, but their
-  // paperwork sometimes carries a PO — remind the worker to look before submitting.
-  if (!poNum && /^bell manufacturing/i.test(selectedCust.name)) {
-    if (!confirm('Bell Manufacturing:\n\nDid you check the paperwork for a PO number?\n\nOK = no PO on paperwork, submit without one.\nCancel = go back and enter it.')) {
+  // Customers whose PO is "on file" (field shows Optional) but whose paperwork
+  // sometimes carries a PO — remind the worker to look before submitting.
+  if (!poNum && /^(bell manufacturing|midwest powder coating)/i.test(selectedCust.name)) {
+    if (!confirm(selectedCust.name + ':\n\nDid you check the paperwork for a PO number?\n\nOK = no PO on paperwork, submit without one.\nCancel = go back and enter it.')) {
       document.getElementById('poInput').focus();
       return;
     }
