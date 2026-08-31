@@ -31,6 +31,21 @@
 </header>
 <div class="wrap">
 
+  <!-- Shown only on the legacy public host: the tools are moving to the network-gated
+       shop server (LAN / Tailscale). Links below only resolve on the shop network or
+       a Tailscale device — that's the point. -->
+  <div id="movedBanner" hidden style="background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;line-height:1.6">
+    <strong>📍 New address — update your bookmark.</strong> The tools are moving to the shop network:<br>
+    On shop Wi‑Fi: <a href="http://192.168.1.247:8809/" style="font-weight:600">http://192.168.1.247:8809</a><br>
+    Off‑site (Tailscale): <a href="https://inthermopc.tail881969.ts.net/" style="font-weight:600">https://inthermopc.tail881969.ts.net</a><br>
+    <span style="color:#92400e">These links only work inside the shop network or on Tailscale.</span>
+  </div>
+  <script>
+    if (/(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname)) {
+      document.getElementById('movedBanner').hidden = false;
+    }
+  </script>
+
   <!-- Ask Inthermo tile removed 2026-07-08: the tool was moved off the public
        internet to a network-gated service on inthermopc (shop LAN / Tailscale only),
        because it can surface customer POs and drawings. Shop devices reach it at
