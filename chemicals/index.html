@@ -52,6 +52,8 @@
     <div class="actions">
       <div id="reminderText" class="muted"></div>
       <span style="flex:1"></span>
+      <input type="date" id="reminderDate" title="Next reminder date">
+      <button class="btn ghost" onclick="setReminderDate()">Set date</button>
       <button id="reminderBtn" class="btn ghost" onclick="toggleReminder()"></button>
     </div>
   </div>
@@ -199,6 +201,7 @@ function init(s){
   var bar=document.getElementById('reminderBar'); bar.style.display='block';
   document.getElementById('reminderText').textContent = s.reminderOn ? ('Reminder ON — next on '+(s.nextReminder||'?')) : 'Reminder is OFF';
   document.getElementById('reminderBtn').textContent = s.reminderOn ? 'Turn off' : 'Turn on 5-week reminder';
+  document.getElementById('reminderDate').value = s.nextReminder || '';
 }
 
 // Refresh state + rebuild the UI WITHOUT losing work in progress. init() re-seeds the
@@ -305,6 +308,16 @@ function toggleReminder(){
     document.getElementById('reminderBtn').disabled=false;
   }).catch(function(e){
     document.getElementById('reminderBtn').disabled=false;
+    document.getElementById('reminderText').textContent='Error: '+e.message;
+  });
+}
+
+function setReminderDate(){
+  var d=document.getElementById('reminderDate').value;
+  if(!d){ alert('Pick a date first.'); return; }
+  api('setReminder',{date:d}).then(function(){
+    reinitPreserving().catch(function(){});
+  }).catch(function(e){
     document.getElementById('reminderText').textContent='Error: '+e.message;
   });
 }
