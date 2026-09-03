@@ -855,6 +855,21 @@
     .prc-price { font-size: 17px; font-weight: 700; color: #15803d; white-space: nowrap; }
     .prc-so { color: #2563eb; font-weight: 600; text-decoration: none; white-space: nowrap; }
     .prc-so.dim { color: #9ca3af; font-weight: 500; }
+
+    /* ---- Autoslip tab (read-only view of the shipping_agent config sheet) ---- */
+    #page-autoslip { max-width: 1100px; }
+    .as-chip {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .as-on   { background: #dcfce7; color: #15803d; }
+    .as-hold { background: #fef3c7; color: #92400e; }
+    .as-off  { background: #e5e7eb; color: #6b7280; }
+    .as-desc { font-size: 13px; color: #374151; margin-top: 3px; }
+    .as-raw  { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    .as-note { font-size: 12px; color: #6b7280; white-space: pre-line; }
+    .as-meta { font-size: 12px; color: #2563eb; margin-top: 2px; }
+    .as-sheet-link { color: #2563eb; font-weight: 600; text-decoration: none; font-size: 13px; white-space: nowrap; padding: 0 6px; }
   </style>
 </head>
 <body>
@@ -864,6 +879,7 @@
   <button class="tab-btn active" id="tab-log"     onclick="switchTab('log')">Today's Log</button>
   <button class="tab-btn"        id="tab-prices"  onclick="switchTab('prices')">Prices<span id="pricesCount" class="tab-count" style="display:none"></span></button>
   <button class="tab-btn"        id="tab-pickups" onclick="switchTab('pickups')">Pickups</button>
+  <button class="tab-btn"        id="tab-autoslip" onclick="switchTab('autoslip')">Autoslip</button>
   <a class="tab-link" href="https://tools.myinthermo.com/planner/">Planner&nbsp;↗</a>
 </div>
 
@@ -1026,6 +1042,26 @@
   <div id="pickupsContent" class="loading-msg">Loading…</div>
 </div>
 
+<!-- ========== AUTOSLIP PAGE — read-only view of the Shipping Manager's `shipping_agent` ==========
+     config tab (Inthermo shipping schedule sheet): which customers auto-slip and auto-send.
+     Edits still happen in the sheet (link in the toolbar); the agent re-reads it ~30-45 min. -->
+<div class="page" id="page-autoslip">
+  <div class="log-toolbar">
+    <input type="text" id="asFilterCust" class="log-filter" placeholder="Find customer…" oninput="renderAutoslip()">
+    <select id="asFilterMode" class="log-filter-sel" onchange="renderAutoslip()">
+      <option value="all">All configured</option>
+      <option value="slip">Auto-slip ON</option>
+      <option value="send">Auto-send ON</option>
+      <option value="both">Auto-slip + auto-send</option>
+      <option value="noslip">Auto-slip OFF</option>
+      <option value="missing">Not on the sheet</option>
+    </select>
+    <a id="asSheetLink" class="as-sheet-link" href="#" target="_blank" rel="noopener">Edit in sheet&nbsp;↗</a>
+    <button class="log-refresh" onclick="loadAutoslip()" title="Refresh">↻</button>
+  </div>
+  <div id="autoslipContent" class="loading-msg">Loading…</div>
+</div>
+
 <button class="fab" id="fab" onclick="switchTab('intake')" title="New receiving entry">+</button>
 
 <div class="toast" id="toast"></div>
@@ -1088,7 +1124,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-08-31c';
+var APP_VERSION = '2026-09-03a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1304,12 +1340,13 @@ function selectTopCustomer(fullName) {
 // TABS
 // =====================================================================
 function switchTab(tab) {
-  ['intake', 'log', 'prices', 'pickups'].forEach(function (id) {
+  ['intake', 'log', 'prices', 'pickups', 'autoslip'].forEach(function (id) {
     document.getElementById('tab-' + id).classList.toggle('active', id === tab);
     document.getElementById('page-' + id).classList.toggle('active', id === tab);
   });
   document.getElementById('fab').style.display = tab === 'log' ? 'flex' : 'none';
   if (tab === 'pickups') loadPickups();
+  if (tab === 'autoslip') loadAutoslip(true);
   if (tab === 'prices') loadPrices();
   if (tab === 'log') {
     // The log was baked into bootstrap and already rendered, so opening the tab is
@@ -2634,6 +2671,128 @@ function setPickupStatus(row, status) {
       loadPickups(true);
     })
     .catch(function () { showToast('⚠️ Network error — not saved'); loadPickups(true); });
+}
+
+// =====================================================================
+// AUTOSLIP TAB — plain-English view of the shipping_agent config grammar.
+// Grammar mirrors Steelhead Agent assign_shipments.py (auto_slip + email cells);
+// keep these describers in sync when Will adds a new mode there.
+// =====================================================================
+var _AUTOSLIP = null;   // {rows:[...], sheetUrl, fetched}
+
+function loadAutoslip(useCache) {
+  var el = document.getElementById('autoslipContent');
+  if (!useCache || !_AUTOSLIP) el.innerHTML = '<div class="loading-msg">Loading…</div>';
+  call('getAutoslipConfig', useCache ? {} : { refresh: 1 }).then(function (res) {
+    if (!res.ok) { el.innerHTML = '<div class="log-empty">Could not load config: ' + esc(res.error || '?') + '</div>'; return; }
+    _AUTOSLIP = res;
+    if (res.sheetUrl) document.getElementById('asSheetLink').href = res.sheetUrl;
+    renderAutoslip();
+  }).catch(function (e) { el.innerHTML = '<div class="log-empty">Network error: ' + esc(String(e)) + '</div>'; });
+}
+
+function asTime(t) {                       // '9' → 9:00 AM, '930' → 9:30 AM, '1830' → 6:30 PM
+  if (!t) return '6:00 AM';
+  var n = String(t).replace(/\D/g, ''), h, m = 0;
+  if (n.length <= 2) h = +n; else { h = +n.slice(0, -2); m = +n.slice(-2); }
+  if (isNaN(h)) return t;
+  var ap = h >= 12 ? 'PM' : 'AM', hh = h % 12 || 12;
+  return hh + ':' + pad2(m) + ' ' + ap;
+}
+
+function asSlipInfo(v) {                   // → {on:bool, label, desc}
+  var raw = String(v || '').trim(), s = raw.toLowerCase();
+  if (!s) return { on: false, label: 'OFF', desc: 'No auto-slip — slips are made by hand.' };
+  var cut = s.match(/:cutoff(?::(\d{1,4}))?$/), cutTxt = cut ? ' Released once per ship day at the ' + asTime(cut[1]) + ' cutoff.' : '';
+  var core = cut ? s.slice(0, cut.index) : s;
+  if (core === 'y')        return { on: true, label: 'AUTO', desc: 'Slip each SO as soon as all its work orders are done (no waiting).' + cutTxt };
+  if (core === 'combined') return { on: true, label: 'AUTO', desc: 'ONE combined slip from all open SOs' + (cut ? ' — whatever is ready at the cutoff.' : ' once every open work order is done.') + cutTxt };
+  if (core.indexOf('combined:') === 0) return { on: true, label: 'AUTO', desc: 'One combined slip of SOs whose PO/parts match “' + core.slice(9) + '”.' + cutTxt };
+  if (core === 'any' || core === 'any:')  return { on: true, label: 'AUTO', desc: 'Slip any work order the moment it is READY (rolling blanket, never waits for the SO).' + cutTxt };
+  if (core.indexOf('any:') === 0)  return { on: true, label: 'AUTO', desc: 'Slip any READY work order whose PO/parts match “' + core.slice(4) + '” (rolling blanket).' + (cut ? ' Ready WOs are batched onto one slip per ship day at the ' + asTime(cut[1]) + ' cutoff while other WOs are still in process.' : '') };
+  if (core === 'draft')    return { on: true, label: 'DRAFT', desc: 'Shippable SOs are parked on ONE draft slip; Will finalizes it (after booking the courier).' };
+  if (core.indexOf('draft:') === 0) return { on: true, label: 'DRAFT', desc: 'SOs matching “' + core.slice(6) + '” are parked on a draft slip for Will to finalize.' };
+  return { on: true, label: 'AUTO', desc: 'Slip each SO whose PO/parts match “' + raw + '” once its work orders are done; other SOs are manual.' + cutTxt };
+}
+
+function asEmailInfo(v) {                  // → {on:bool, label, desc}
+  var s = String(v || '').trim().toLowerCase();
+  if (!s)                 return { on: false, label: 'PROPOSE', desc: 'Emails are drafted for Will to approve — nothing goes out on its own.' };
+  if (s === 'n')          return { on: false, label: 'NEVER',   desc: 'Never email this customer.' };
+  if (s === 'y' || s === 'auto') return { on: true, label: 'AUTO-SEND', desc: 'Shipper emails go out automatically when the slip is finalized.' };
+  if (s === 'auto:slipped')       return { on: true, label: 'AUTO-SEND', desc: 'Auto-send only for slips the agent made itself; hand-made slips are proposed to Will.' };
+  if (s === 'auto:slipped:none')  return { on: true, label: 'AUTO-SEND', desc: 'Auto-send only for slips the agent made itself; hand-made slips are never emailed.' };
+  if (s.indexOf('auto:tracking') === 0) return { on: true, label: 'AUTO (tracking)', desc: 'Auto-send once a tracking # is on the slip' + (s.slice(-5) === ':none' ? '; slips without one are held for Will.' : '.') };
+  if (s.indexOf('auto:shipto:') === 0)  return { on: true, label: 'AUTO (ship-to)', desc: 'Auto-send only when the ship-to contains “' + s.slice(12).replace(/:none$/, '') + '”' + (s.slice(-5) === ':none' ? '; others held for Will.' : '.') };
+  if (s.indexOf('auto:parts:') === 0)   return { on: true, label: 'AUTO (parts)',  desc: 'Auto-send only for slips whose parts match “' + s.slice(11).replace(/:none$/, '') + '”' + (s.slice(-5) === ':none' ? '; others never emailed.' : '.') };
+  return { on: true, label: v, desc: '' };
+}
+
+function asChip(info) {
+  var cls = info.on ? (info.label === 'DRAFT' ? 'as-hold' : 'as-on') : 'as-off';
+  return '<span class="as-chip ' + cls + '">' + esc(info.label) + '</span>';
+}
+
+// Customers the Receiving tool knows (customer_master) with NO matching sheet row.
+// Sheet rows match Steelhead names by prefix, so a sheet name that is a prefix of the
+// customer_master name counts as covered (approximate — names differ a little).
+function asMissingCustomers(rows) {
+  var prefixes = rows.map(function (r) { return r.customer.toLowerCase(); });
+  return allCustomers.map(function (c) { return c.name; }).filter(function (name) {
+    var n = name.toLowerCase();
+    return !prefixes.some(function (p) { return n.indexOf(p) === 0 || p.indexOf(n) === 0; });
+  }).sort();
+}
+
+function renderAutoslip() {
+  if (!_AUTOSLIP) return;
+  var q    = (document.getElementById('asFilterCust').value || '').trim().toLowerCase();
+  var mode = document.getElementById('asFilterMode').value;
+  var el   = document.getElementById('autoslipContent');
+  var rows = _AUTOSLIP.rows || [];
+
+  if (mode === 'missing') {
+    var missing = asMissingCustomers(rows).filter(function (n) { return !q || n.toLowerCase().indexOf(q) >= 0; });
+    el.innerHTML = missing.length
+      ? '<div class="log-table-wrap"><table class="log-table"><thead><tr><th>Customer (not on the shipping_agent sheet)</th><th>Auto-slip</th><th>Email</th></tr></thead><tbody>'
+        + missing.map(function (n) { return '<tr><td class="log-col-customer">' + esc(n) + '</td><td>' + asChip({ on: false, label: 'OFF' }) + '</td><td>' + asChip({ on: false, label: 'PROPOSE' }) + '</td></tr>'; }).join('')
+        + '</tbody></table></div><div class="as-note" style="padding:8px 4px">' + missing.length + ' customers with no row — slips are manual and emails are proposed. Prefix match is approximate; check the sheet if unsure.</div>'
+      : '<div class="log-empty">Every known customer has a row on the sheet.</div>';
+    return;
+  }
+
+  var list = rows.map(function (r) {
+    return { r: r, slip: asSlipInfo(r.auto_slip), mail: asEmailInfo(r.email) };
+  }).filter(function (x) {
+    if (q && x.r.customer.toLowerCase().indexOf(q) < 0 && (x.r.notes || '').toLowerCase().indexOf(q) < 0) return false;
+    if (mode === 'slip')   return x.slip.on;
+    if (mode === 'send')   return x.mail.on;
+    if (mode === 'both')   return x.slip.on && x.mail.on;
+    if (mode === 'noslip') return !x.slip.on;
+    return true;
+  }).sort(function (a, b) { return a.r.customer.localeCompare(b.r.customer); });
+
+  if (!list.length) { el.innerHTML = '<div class="log-empty">No customers match.</div>'; return; }
+  var html = list.map(function (x) {
+    var r = x.r, extras = [];
+    if (r.ship_date)      extras.push('ships ' + r.ship_date);
+    if (r.standing_pickup && r.standing_pickup.toUpperCase() === 'Y') extras.push('standing pickup');
+    if (r.print_copies !== '' && r.print_copies !== undefined) extras.push(r.print_copies === '0' ? 'never print' : r.print_copies + ' copies');
+    if (r.sms_to)         extras.push('texts ' + r.sms_to);
+    if (r.email_to)       extras.push('to: ' + r.email_to);
+    return '<tr>'
+      + '<td class="log-col-customer">' + esc(r.customer) + (extras.length ? '<div class="as-meta">' + esc(extras.join(' · ')) + '</div>' : '') + '</td>'
+      + '<td>' + asChip(x.slip) + '<div class="as-desc">' + esc(x.slip.desc) + '</div>' + (r.auto_slip ? '<div class="as-raw">' + esc(r.auto_slip) + '</div>' : '') + '</td>'
+      + '<td>' + asChip(x.mail) + '<div class="as-desc">' + esc(x.mail.desc) + '</div>' + (r.email ? '<div class="as-raw">' + esc(r.email) + '</div>' : '') + '</td>'
+      + '<td><div class="as-note">' + esc(r.notes || '') + '</div></td>'
+      + '</tr>';
+  }).join('');
+  var when = _AUTOSLIP.fetched ? new Date(_AUTOSLIP.fetched) : null;
+  el.innerHTML = '<div class="log-table-wrap"><table class="log-table">'
+    + '<thead><tr><th>Customer</th><th>Auto-slip</th><th>Email</th><th>Notes</th></tr></thead>'
+    + '<tbody>' + html + '</tbody></table></div>'
+    + '<div class="as-note" style="padding:8px 4px">' + list.length + ' of ' + rows.length + ' rows · read-only — edit in the sheet; the agent picks changes up in ~45 min'
+    + (when ? ' · loaded ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '') + '</div>';
 }
 
 function showToast(msg, ms) {
