@@ -1109,6 +1109,8 @@
 // the backend token server-side. On the legacy public copy, fall back to the direct /exec URL.
 var IS_LEGACY_HOST = /(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname);
 var BACKEND_URL = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycbz40iuFXCss_287WKA6-ZvcvDFFNmpEQx1059vvmh_MXrNpmESMmLgcfursIVDZo-JCRw/exec' : '/api/receiving';
+// Shipping Planner backend — serves the Autoslip tab (it already reads the Shipping Schedule sheet).
+var PLANNER_BACKEND_URL = IS_LEGACY_HOST ? 'https://script.google.com/macros/s/AKfycby28VVrPqOHYAVbROXipODf0lkNp5skNwxp8rZnT1wUGyvQsUb1Lpsfb5nAdmgxGEKfqg/exec' : '/api/planner';
 
 function call(op, payload) {
   return fetch(BACKEND_URL, {
@@ -2683,7 +2685,10 @@ var _AUTOSLIP = null;   // {rows:[...], sheetUrl, fetched}
 function loadAutoslip(useCache) {
   var el = document.getElementById('autoslipContent');
   if (!useCache || !_AUTOSLIP) el.innerHTML = '<div class="loading-msg">Loading…</div>';
-  call('getAutoslipConfig', useCache ? {} : { refresh: 1 }).then(function (res) {
+  fetch(PLANNER_BACKEND_URL, {
+    method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow',
+    body: JSON.stringify({ op: 'getAutoslipConfig', payload: useCache ? {} : { refresh: 1 } })
+  }).then(function (r) { return r.json(); }).then(function (res) {
     if (!res.ok) { el.innerHTML = '<div class="log-empty">Could not load config: ' + esc(res.error || '?') + '</div>'; return; }
     _AUTOSLIP = res;
     if (res.sheetUrl) document.getElementById('asSheetLink').href = res.sheetUrl;
