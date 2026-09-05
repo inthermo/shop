@@ -551,6 +551,12 @@
     .pr-save:disabled { opacity: .4; }
     .pr-skip { margin-top: 10px; background: #fff; color: #6b7280; border: 2px solid #d1d5db; border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
     .log-done { color: #22c55e; font-weight: 700; }
+    .log-table tr.outbox td { background: #fffbeb; }
+    .log-table tr.outbox.ob-failed td { background: #fef2f2; }
+    .ob-badge { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .ob-badge.syncing { background: #fde68a; color: #92400e; }
+    .ob-badge.failed  { background: #fecaca; color: #991b1b; cursor: pointer; }
+    .ob-badge.saved   { background: #d1fae5; color: #065f46; }
     .log-table tr.day-start td { border-top: 2px solid #e5e7eb; }
     @keyframes logFlash { 0% { background: #fde68a; } 100% { background: transparent; } }
     .log-table tr.log-flash td { animation: logFlash 1.6s ease-out; }
@@ -1126,7 +1132,7 @@ function call(op, payload) {
 // =====================================================================
 // Bump on EVERY deploy of this file. The auto-updater fetches the live HTML,
 // compares this stamp, and force-reloads the iPad's cached copy when it changed.
-var APP_VERSION = '2026-09-03a';
+var APP_VERSION = '2026-09-05a';
 var allCustomers    = [];   // [{name, aliases, items, staffNote}]
 var selectedCust    = null; // selected customer object
 var entryInitials   = '';   // who's entering — asked right after customer selection
@@ -1404,6 +1410,7 @@ function applyPendingUpdate() {
 setInterval(function () { if (!document.hidden) { if (_PENDING_VER) applyPendingUpdate(); else checkAppUpdate(); } }, 900000);
 
 document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) obDrain();
   if (!document.hidden && document.getElementById('page-log').classList.contains('active')) loadLog(true);
   if (!document.hidden && Date.now() - _ORDERS_LAST > 240000) refreshOpenOrders();
   if (!document.hidden) { if (_PENDING_VER) applyPendingUpdate(); else checkAppUpdate(); }
@@ -1993,24 +2000,17 @@ function onSubmit(skipOpenOrderCheck) {
   var note  = document.getElementById('notesInput').value.trim();
   var now  = new Date();
   var date = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
-  var btn  = document.getElementById('submitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Submitting…';
   var itemNames = activeRows.map(function (r) { return r.name; });
-  call('submitReceiving', { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames, by: entryInitials, submitId: entrySubmitId })
-    .then(function (result) {
-      btn.disabled = false; btn.textContent = 'Submit';
-      if (result && result.ok) {
-        showToast('✓ Received: ' + description, 3500);
-        clearCustomer();
-        document.getElementById('poInput').value = '';
-        switchTab('log');
-      } else { showToast('Error: ' + (result && result.error || 'unknown'), 5000); }
-    })
-    .catch(function (e) {
-      btn.disabled = false; btn.textContent = 'Submit';
-      showToast('Error: ' + e.message, 5000);
-    });
+  // Outbox: the entry is saved locally and shown in the Log immediately; a
+  // background loop posts it (same submitId → server-side idempotent) and
+  // retries through Apps Script's slow/404 spells. The worker never waits.
+  obEnqueue('submitReceiving',
+    { date: date, customer: selectedCust.name, description: description, poNum: poNum, note: note, items: itemNames, by: entryInitials, submitId: entrySubmitId },
+    [{ date: date, time: fmtClock(now), customer: selectedCust.name, poNum: poNum, description: description, note: note, by: entryInitials }]);
+  showToast('✓ Received: ' + description, 3500);
+  clearCustomer();
+  document.getElementById('poInput').value = '';
+  switchTab('log');
 }
 
 function ooCancel() {
@@ -2030,7 +2030,6 @@ function submitMultipleOrders() {
   var now    = new Date();
   var date   = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
   var note   = document.getElementById('notesInput').value.trim();
-  var btn    = document.getElementById('submitBtn');
   var total  = orders.length;
 
   // Build ALL entries and send them in ONE batch call — the old per-PO serial loop
@@ -2068,39 +2067,185 @@ function submitMultipleOrders() {
     };
   });
 
-  btn.disabled = true;
-  btn.textContent = 'Submitting ' + total + ' POs…';
-
-  call('submitReceivingBatch', { entries: entries })
-    .then(function (result) {
-      btn.disabled = false;
-      btn.textContent = 'Submit';
-      if (result && result.ok) {
-        var results = result.results || [];
-        var failedIdxs = [];
-        results.forEach(function (r, i) { if (!(r && r.ok)) failedIdxs.push(idxs[i]); });
-        if (!failedIdxs.length) {
-          showToast('✓ ' + total + ' POs received', 3500);
-          clearCustomer();
-          switchTab('log');
-        } else {
-          // Keep ONLY the failed POs selected so a retry can't duplicate the saved ones.
-          selectedOrderIdxs = failedIdxs;
-          renderOpenOrders();
-          updateFromSelectedOrders();
-          showToast((total - failedIdxs.length) + ' of ' + total + ' submitted — '
-            + failedIdxs.length + ' failed (still selected, tap Submit to retry)', 6000);
-        }
-      } else {
-        showToast('Submit failed: ' + ((result && result.error) || 'unknown') + ' — nothing saved, try again', 6000);
-      }
-    })
-    .catch(function (e) {
-      btn.disabled = false;
-      btn.textContent = 'Submit';
-      showToast('Submit failed: ' + e.message + ' — try again', 6000);
-    });
+  // Outbox (see obEnqueue): one batch item, one Log row per PO. Per-entry
+  // submitIds make a retry after a lost response safe (already-saved POs dedupe).
+  obEnqueue('submitReceivingBatch', { entries: entries }, entries.map(function (en) {
+    return { date: date, time: fmtClock(now), customer: en.customer, poNum: en.poNum, description: en.description, note: en.note, by: en.by };
+  }));
+  showToast('✓ ' + total + ' POs received', 3500);
+  clearCustomer();
+  switchTab('log');
 }
+
+// =====================================================================
+// OUTBOX — submits never block the worker.
+// Submit writes the entry to localStorage and shows it in the Log at once
+// ("saving…"). obDrain() posts queued items one at a time in the background
+// with a 90s timeout and backoff; the server dedupes by submitId (6h), so a
+// retry after a lost/404 response cannot duplicate the row. After 3 failed
+// attempts the badge turns red ("not saved yet") but auto-retry continues;
+// a server-side rejection (bad input, unauthorized) or an item older than the
+// 6h dedup window stops auto-retry — tap the badge to retry by hand.
+// Synced items linger (green "saved") until the server log shows the row.
+// =====================================================================
+var OB_KEY   = 'riOutbox_v1';
+var _OB_BUSY = false;
+var OB_TIMEOUT_MS = 90000;
+var OB_DEDUP_MS   = 6 * 3600 * 1000;
+
+function obLoad() { try { return JSON.parse(localStorage.getItem(OB_KEY) || '[]') || []; } catch (e) { return []; } }
+function obSave(list) { try { localStorage.setItem(OB_KEY, JSON.stringify(list)); } catch (e) {} }
+function obNewId() { return 'ob-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); }
+
+function fmtClock(d) {
+  var h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + pad2(m) + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+
+function obEnqueue(op, payload, rows) {
+  // Always carry a submitId so a retry is idempotent even on an old form session.
+  if (op === 'submitReceiving' && !payload.submitId) payload.submitId = obNewId();
+  if (op === 'submitReceivingBatch') (payload.entries || []).forEach(function (en, i) { if (!en.submitId) en.submitId = obNewId() + ':' + i; });
+  var list = obLoad();
+  list.push({ id: obNewId(), op: op, payload: payload, rows: rows, created: Date.now(),
+              attempts: 0, next: 0, state: 'syncing', err: '', auto: true });
+  obSave(list);
+  obDrain();
+}
+
+// Transport-level / Apps-Script-flake errors are retried; anything else the
+// backend said "no" to is a real rejection.
+function obTransient(err) {
+  return /TrackerWriter|fetch failed|bad JSON|HTTP \d|timeout|timed out|network|Failed to fetch|Load failed|abort/i.test(String(err || ''));
+}
+
+function callWithTimeout(op, payload, ms) {
+  var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, ms) : null;
+  return fetch(BACKEND_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ op: op, token: 'ri-shop-7c2e91', payload: payload || {} }),
+    redirect: 'follow',
+    signal: ctrl ? ctrl.signal : undefined
+  }).then(function (r) { return r.json(); })
+    .then(function (j) { if (timer) clearTimeout(timer); return j; },
+          function (e) { if (timer) clearTimeout(timer); throw e; });
+}
+
+function obDrain(forceId) {
+  if (_OB_BUSY) return;
+  var list = obLoad();
+  var now  = Date.now();
+  var item = null;
+  for (var i = 0; i < list.length; i++) {
+    var it = list[i];
+    if (it.state === 'saved') continue;
+    if (forceId ? it.id === forceId : (it.auto && it.next <= now)) { item = it; break; }
+  }
+  if (!item) return;
+  _OB_BUSY = true;
+  item.attempts++;
+  item.auto = true;
+  item.state = item.attempts > 3 ? 'failed' : 'syncing';
+  obSave(list);
+  obRerender();
+  callWithTimeout(item.op, item.payload, OB_TIMEOUT_MS)
+    .then(function (res) { obSettle(item.id, null, res); })
+    .catch(function (e) { obSettle(item.id, e && e.message || 'fetch failed', null); });
+}
+
+function obSettle(id, transportErr, res) {
+  var list = obLoad();
+  var item = null;
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) { item = list[i]; break; }
+  _OB_BUSY = false;
+  if (!item) { obDrain(); return; }
+  var err = transportErr, permanent = false;
+  if (!err) {
+    if (res && res.ok) {
+      if (item.op === 'submitReceivingBatch') {
+        // Keep only the entries the server did NOT save; they retry with their own ids.
+        var results = res.results || [];
+        var keepE = [], keepR = [], errs = [];
+        (item.payload.entries || []).forEach(function (en, i) {
+          var r = results[i];
+          if (r && r.ok) return;
+          keepE.push(en); keepR.push(item.rows[i]); errs.push(r && r.error || 'not saved');
+        });
+        if (keepE.length) { item.payload.entries = keepE; item.rows = keepR; err = errs[0]; }
+      }
+    } else {
+      err = (res && res.error) || 'unknown response';
+    }
+    if (err && !obTransient(err)) permanent = true;
+  }
+  if (!err) {
+    item.state = 'saved'; item.err = ''; item.saved = Date.now();
+  } else {
+    item.err = String(err).slice(0, 160);
+    var tooOld = Date.now() - item.created > OB_DEDUP_MS;
+    item.auto = !permanent && !tooOld;
+    var gap = item.attempts <= 1 ? 5000 : item.attempts === 2 ? 15000 : item.attempts === 3 ? 30000 : 60000;
+    item.next = Date.now() + gap;
+    item.state = (item.attempts >= 3 || !item.auto) ? 'failed' : 'syncing';
+  }
+  obSave(list);
+  obRerender();
+  if (!err) loadLog(true);          // pull the real row (submit busted the server cache)
+  setTimeout(obDrain, 250);         // next queued item, if any
+}
+
+function obRetry(id) {
+  var list = obLoad();
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) { list[i].auto = true; list[i].next = 0; }
+  obSave(list);
+  showToast('Retrying…', 2000);
+  obDrain(id);
+}
+
+// Rows for renderLog: unsynced items first (newest first); synced ones only until the
+// server log carries a matching row, or 20 min, whichever comes first.
+function obLogEntries(serverEntries) {
+  var list = obLoad();
+  if (!list.length) return [];
+  var keys = {};
+  serverEntries.forEach(function (e) { keys[entryKey(e)] = 1; });
+  var out = [], changed = false, keep = [];
+  list.forEach(function (it) {
+    if (it.state === 'saved') {
+      var allThere = it.rows.every(function (r) { return keys[entryKey(r)]; });
+      if (allThere || Date.now() - it.saved > 1200000) { changed = true; return; }
+    }
+    keep.push(it);
+    it.rows.forEach(function (r) {
+      if (keys[entryKey(r)]) return;           // server already shows it
+      out.push({ date: r.date, time: r.time, customer: r.customer, poNum: r.poNum, description: r.description,
+                 note: r.note, by: r.by, done: false, _ob: { id: it.id, state: it.state, attempts: it.attempts, err: it.err, auto: it.auto } });
+    });
+  });
+  if (changed) obSave(keep);
+  return out.reverse();
+}
+
+function obBadgeHtml(ob) {
+  if (ob.state === 'saved') return '<div class="ob-badge saved">saved ✓</div>';
+  if (ob.state === 'failed') {
+    var why = ob.auto ? 'not saved yet — retrying' : 'not saved — tap to retry';
+    return '<div class="ob-badge failed" title="' + esc(ob.err || '') + '" onclick="obRetry(\'' + ob.id + '\')">⚠ ' + why + '</div>';
+  }
+  return '<div class="ob-badge syncing">saving…</div>';
+}
+
+function obRerender() {
+  if (_OPEN_PRICING) return;
+  if (!document.getElementById('page-log').classList.contains('active')) return;
+  if (_TODAY_LOG && _TODAY_LOG.entries) renderLog(_TODAY_LOG);
+}
+
+setInterval(function () { if (!document.hidden) obDrain(); }, 15000);
+window.addEventListener('online', function () { obDrain(); });
+setTimeout(obDrain, 1500);
 
 // =====================================================================
 // LOG
@@ -2126,7 +2271,7 @@ function loadLog(silent) {
 // Date column. The first row of each day gets id="logd-<date>" + a divider so
 // the date picker can scroll straight to it. Filters are applied after render.
 function renderLog(result) {
-  var entries = (result && result.entries) || [];
+  var entries = obLogEntries((result && result.entries) || []).concat((result && result.entries) || []);
   if (!entries.length) {
     document.getElementById('logContent').innerHTML = '<div class="log-empty">Nothing received in the last 30 days.</div>';
     return;
@@ -2137,7 +2282,7 @@ function renderLog(result) {
     lastDate = e.date;
     var po = e.poNum ? esc(e.poNum) : '<span style="color:#d1d5db">—</span>';
     if (e.done) po += ' <span class="log-done">✓</span>';
-    var np = entryUnpricedItems(e);
+    var np = e._ob ? [] : entryUnpricedItems(e);
     var open = np.length && _OPEN_PRICING === entryKey(e);
     var pricingCell = np.length
       ? '<span class="np-badge' + (open ? ' open' : '') + '" onclick="togglePricingPanel(' + idx + ')">$ needs pricing</span>'
@@ -2148,14 +2293,15 @@ function renderLog(result) {
         + ' data-done="' + (e.done ? '1' : '0') + '">'
         + '<td colspan="6" class="pr-panel-cell">' + pricingPanelHtml(e, np) + '</td></tr>'
       : '';
-    return '<tr class="log-row ' + (e.done ? 'done ' : '') + (firstOfDay ? 'day-start' : '') + '"'
+    return '<tr class="log-row ' + (e.done ? 'done ' : '') + (firstOfDay ? 'day-start' : '') + (e._ob ? ' outbox ob-' + e._ob.state : '') + '"'
       + (firstOfDay ? ' id="logd-' + esc(e.date) + '"' : '')
       + ' data-date="' + esc(e.date) + '"'
       + ' data-cust="' + esc(String(e.customer).toLowerCase()) + '"'
       + ' data-done="' + (e.done ? '1' : '0') + '">'
       + '<td class="log-col-date">' + esc(fmtShortDate(e.date))
         + (e.time ? '<div class="log-time">' + esc(e.time) + '</div>' : '')
-        + (e.by ? '<div class="log-time">by ' + esc(e.by) + '</div>' : '') + '</td>'
+        + (e.by ? '<div class="log-time">by ' + esc(e.by) + '</div>' : '')
+        + (e._ob ? obBadgeHtml(e._ob) : '') + '</td>'
       + '<td class="log-col-customer">' + esc(e.customer) + '</td>'
       + '<td class="log-col-po">' + po + '</td>'
       + '<td class="log-col-items">' + esc(e.description) + '</td>'
