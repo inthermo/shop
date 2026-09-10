@@ -24,7 +24,7 @@
   *{ box-sizing:border-box; }
   body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink); }
   header{ background:var(--hdr); color:#fff; padding:14px 16px 0; }
-  .hrow{ max-width:760px; margin:0 auto; display:flex; align-items:center; gap:10px; }
+  .hrow{ max-width:760px; margin:0 auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .hrow h1{ margin:0; font-size:20px; flex:1; font-weight:600; }
   .units{ display:flex; border:1px solid rgba(255,255,255,.45); border-radius:8px; overflow:hidden; }
   .units button{ background:transparent; color:#fff; border:0; font:inherit; font-size:13px; padding:5px 12px; cursor:pointer; }
@@ -114,6 +114,9 @@
 <header>
   <div class="hrow">
     <h1>🌦️ Weather</h1>
+    <div class="units" id="src" style="display:none" title="Forecast source for this place">
+      <button data-s="om">Open-Meteo</button><button data-s="met">yr.no (MET)</button>
+    </div>
     <div class="units" id="units">
       <button data-u="metric">°C</button><button data-u="imperial">°F</button>
     </div>
@@ -133,7 +136,7 @@
   </details>
 </div>
 <footer style="text-align:center;color:var(--muted);font-size:12px;padding:6px 0 30px">
-  Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:inherit">Open-Meteo</a> · hours &amp; dates are local to each place
+  Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:inherit">Open-Meteo</a> · <a href="https://api.met.no/" target="_blank" rel="noopener" style="color:inherit">MET Norway</a> (yr.no data, CC BY 4.0) · hours &amp; dates are local to each place
 </footer>
 
 <script>
@@ -152,7 +155,12 @@ const PLACES = () => DEFAULTS.concat(custom);
 let unit = localStorage.getItem('wx_unit') || 'metric';
 let view = localStorage.getItem('wx_view') || 'overview';   // 'overview' | place id
 if (view !== 'overview' && !PLACES().some(p => p.id === view)) view = 'overview';
-const cache = {};      // placeId -> {data, at}
+const cache = {};      // cacheKey (placeId or placeId@met) -> {data, at}
+let srcPref = {};      // placeId -> 'om' | 'met' (explicit choice; default = MET for Nordic places)
+try{ srcPref = JSON.parse(localStorage.getItem('wx_src') || '{}'); }catch(e){}
+const isNordic = p => p.lat >= 54 && p.lat <= 72 && p.lon >= 4 && p.lon <= 32;   // NO/SE/FI/DK — MET Nordic 1 km model area
+const srcFor  = p => srcPref[p.id] || (isNordic(p) ? 'met' : 'om');
+const ck      = () => { const p = PLACES().find(x => x.id === view); return p && srcFor(p) === 'met' ? view + '@met' : view; };
 let ov = null;         // overview {data:[...], at}
 let adding = false;
 
@@ -169,6 +177,57 @@ const WMO = {
   95:['⛈️','⛈️','Thunderstorm'], 96:['⛈️','⛈️','Thunder w/ hail'], 99:['⛈️','⛈️','Thunder w/ hail'],
 };
 const sym = (code, isDay) => { const w = WMO[code] || ['❓','❓','—']; return [isDay ? w[0] : w[1], w[2]]; };
+const MET_SYM = {
+  clearsky:['☀️','🌙','Clear'], fair:['🌤️','🌙','Fair'], partlycloudy:['⛅','☁️','Partly cloudy'], cloudy:['☁️','☁️','Cloudy'], fog:['🌫️','🌫️','Fog'],
+  lightrain:['🌦️','🌧️','Light rain'], rain:['🌧️','🌧️','Rain'], heavyrain:['🌧️','🌧️','Heavy rain'],
+  lightrainshowers:['🌦️','🌧️','Light showers'], rainshowers:['🌦️','🌧️','Showers'], heavyrainshowers:['🌧️','🌧️','Heavy showers'],
+  lightsleet:['🌨️','🌨️','Light sleet'], sleet:['🌨️','🌨️','Sleet'], heavysleet:['🌨️','🌨️','Heavy sleet'],
+  lightsleetshowers:['🌨️','🌨️','Sleet showers'], sleetshowers:['🌨️','🌨️','Sleet showers'], heavysleetshowers:['🌨️','🌨️','Heavy sleet showers'],
+  lightsnow:['🌨️','🌨️','Light snow'], snow:['🌨️','🌨️','Snow'], heavysnow:['❄️','❄️','Heavy snow'],
+  lightsnowshowers:['🌨️','🌨️','Snow showers'], snowshowers:['🌨️','🌨️','Snow showers'], heavysnowshowers:['❄️','❄️','Heavy snow showers'],
+};
+function metSym(code){
+  if (!code) return ['❓', '—'];
+  const night = /_night$/.test(code), base = code.replace(/_(day|night|polartwilight)$/, '');
+  if (/thunder/.test(base)) return ['⛈️', 'Thunder'];
+  const w = MET_SYM[base]; if (w) return [night ? w[1] : w[0], w[2]];
+  if (/snow/.test(base)) return ['🌨️', 'Snow']; if (/sleet/.test(base)) return ['🌨️', 'Sleet']; if (/rain/.test(base)) return ['🌧️', 'Rain'];
+  return ['❓', base];
+}
+const symAt = (h, i) => h.met_symbol ? metSym(h.met_symbol[i]) : sym(h.weather_code[i], h.is_day[i]);
+
+/* MET Norway Locationforecast → same shape as the Open-Meteo response so render() is source-agnostic.
+   Hourly for ~2.5 days, then 6-hour periods (span=6). Daily arrays come from Open-Meteo (past 30 days, sunrise/sunset)
+   with the forecast days overwritten by MET-derived max/min/precip/wind. Times converted from UTC to the place's zone. */
+const localISO = (utcIso, tz) => new Intl.DateTimeFormat('sv-SE', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' })
+  .format(new Date(utcIso)).replace(' ', 'T');
+const feelsLike = (t, rh, ws) => { const e = rh / 100 * 6.105 * Math.exp(17.27 * t / (237.7 + t)); return t + 0.33 * e - 0.7 * ws - 4; };
+function metToOM(met, om){
+  const tz = om.timezone || 'UTC';
+  const h = { time:[], temperature_2m:[], apparent_temperature:[], precipitation:[], weather_code:[], is_day:[],
+              wind_speed_10m:[], wind_gusts_10m:[], wind_direction_10m:[], met_symbol:[], span:[] };
+  const agg = {};
+  for (const ts of met.properties.timeseries){
+    const inst = ts.data.instant.details, n1 = ts.data.next_1_hours, n6 = ts.data.next_6_hours;
+    const per = n1 || n6; if (!per) continue;
+    const dd = per.details || {}, t = localISO(ts.time, tz), day = t.slice(0, 10);
+    h.time.push(t); h.span.push(n1 ? 1 : 6);
+    h.temperature_2m.push(inst.air_temperature);
+    h.apparent_temperature.push(feelsLike(inst.air_temperature, inst.relative_humidity ?? 50, inst.wind_speed || 0));
+    h.precipitation.push(dd.precipitation_amount || 0);
+    h.weather_code.push(null); h.is_day.push(/_night$/.test(per.summary.symbol_code) ? 0 : 1);
+    h.wind_speed_10m.push(inst.wind_speed); h.wind_gusts_10m.push(inst.wind_speed_of_gust ?? null); h.wind_direction_10m.push(inst.wind_from_direction);
+    h.met_symbol.push(per.summary.symbol_code);
+    const a = agg[day] = agg[day] || { max:-Infinity, min:Infinity, p:0, w:0 };
+    a.max = Math.max(a.max, inst.air_temperature, dd.air_temperature_max ?? -Infinity);
+    a.min = Math.min(a.min, inst.air_temperature, dd.air_temperature_min ?? Infinity);
+    a.p += dd.precipitation_amount || 0; a.w = Math.max(a.w, inst.wind_speed || 0);
+  }
+  const d = JSON.parse(JSON.stringify(om.daily));
+  d.time.forEach((day, di) => { const a = agg[day]; if (!a) return;
+    d.temperature_2m_max[di] = a.max; d.temperature_2m_min[di] = a.min; d.precipitation_sum[di] = a.p; d.wind_speed_10m_max[di] = a.w; });
+  return { hourly: h, daily: d, timezone: tz, utc_offset_seconds: om.utc_offset_seconds, met_updated: met.properties.meta.updated_at };
+}
 
 const cToF  = c => c * 9/5 + 32;
 const conv  = c => unit === 'metric' ? c : cToF(c);
@@ -191,6 +250,17 @@ $('tabs').addEventListener('click', e => {
   view = b.dataset.p; localStorage.setItem('wx_view', view);
   adding = false; renderTabs(); load();
 });
+function renderSrc(){
+  const p = view !== 'overview' && PLACES().find(x => x.id === view);
+  $('src').style.display = p ? '' : 'none';
+  if (p) [...$('src').children].forEach(b => b.classList.toggle('on', b.dataset.s === srcFor(p)));
+}
+$('src').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || view === 'overview') return;
+  const p = PLACES().find(x => x.id === view); if (!p || b.dataset.s === srcFor(p)) return;
+  srcPref[view] = b.dataset.s; localStorage.setItem('wx_src', JSON.stringify(srcPref));
+  renderSrc(); load();
+});
 $('units').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.dataset.u === unit) return;
   unit = b.dataset.u; localStorage.setItem('wx_unit', unit);
@@ -205,7 +275,7 @@ function load(force){
 /* ---------- overview ---------- */
 async function loadOverview(force){
   $('placeName').textContent = 'All places';
-  $('histCard').style.display = 'none';
+  $('histCard').style.display = 'none'; renderSrc();
   const ids = PLACES().map(p => p.id).join(',');
   if (ov && ov.ids === ids && !force && Date.now() - ov.at < 20*60*1000){ render(); return; }
   if (ov && ov.ids === ids) render(); else if (!ov) $('content').innerHTML = '<div class="meta">Loading…</div>';
@@ -269,8 +339,8 @@ function renderOverview(){
     if (!p || !confirm(`Remove ${p.name}?`)) return;
     custom = custom.filter(c => c.id !== el.dataset.del);
     localStorage.setItem('wx_custom', JSON.stringify(custom));
-    localStorage.removeItem('wx2_' + el.dataset.del);
-    delete cache[el.dataset.del];
+    localStorage.removeItem('wx2_' + el.dataset.del); localStorage.removeItem('wx2_' + el.dataset.del + '@met');
+    delete cache[el.dataset.del]; delete cache[el.dataset.del + '@met']; delete srcPref[el.dataset.del];
     ov = null; renderTabs(); load(true);
   }));
   const add = $('addPlace');
@@ -305,36 +375,49 @@ function renderOverview(){
 async function loadPlace(force){
   const p = PLACES().find(x => x.id === view);
   $('placeName').textContent = `${p.name} · ${p.sub}`;
-  const c = cache[view];
+  renderSrc();
+  const src = srcFor(p), key = ck();
+  const c = cache[key];
   if (c && !force && Date.now() - c.at < 20*60*1000){ render(); return; }
   if (c) render();
   if (!c) $('content').innerHTML = '<div class="meta">Loading…</div>';
   const url = 'https://api.open-meteo.com/v1/forecast'
     + `?latitude=${p.lat}&longitude=${p.lon}`
-    + '&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day'
+    + (src === 'met' ? '' : '&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day')
     + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,sunrise,sunset'
     + '&wind_speed_unit=ms&timezone=auto&forecast_days=10&past_days=30';
+  // MET Norway: identified by the browser's Origin header (api.met.no ToS); coords max 4 decimals per their docs.
+  const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${(+p.lat).toFixed(4)}&lon=${(+p.lon).toFixed(4)}`;
   try{
-    const r = await fetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    cache[view] = { data, at: Date.now() };
-    localStorage.setItem('wx2_' + view, JSON.stringify(cache[view]));
-    render();
+    let data;
+    if (src === 'met'){
+      const [ro, rm] = await Promise.all([fetch(url), fetch(metUrl)]);
+      if (!ro.ok) throw new Error('Open-Meteo HTTP ' + ro.status);
+      if (!rm.ok) throw new Error('MET Norway HTTP ' + rm.status);
+      data = metToOM(await rm.json(), await ro.json());
+    }else{
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      data = await r.json();
+    }
+    cache[key] = { data, at: Date.now() };
+    localStorage.setItem('wx2_' + key, JSON.stringify(cache[key]));
+    if (ck() === key) render();
   }catch(err){
-    const stored = localStorage.getItem('wx2_' + view);
-    if (!cache[view] && stored){ try{ cache[view] = JSON.parse(stored); render(); }catch(e){} }
+    const stored = localStorage.getItem('wx2_' + key);
+    if (!cache[key] && stored){ try{ cache[key] = JSON.parse(stored); render(); }catch(e){} }
     $('msg').innerHTML = `<div class="err">Couldn't fetch fresh forecast (${esc(err.message)}). ` +
-      (cache[view] ? 'Showing last saved data.' : 'Check the connection and reload.') + '</div>';
-    if (!cache[view]) $('content').innerHTML = '';
+      (cache[key] ? 'Showing last saved data.' : 'Check the connection and reload.') + '</div>';
+    if (!cache[key]) $('content').innerHTML = '';
   }
 }
 
 function render(){
   if (view === 'overview'){ renderOverview(); return; }
-  const c = cache[view]; if (!c) return;
+  const c = cache[ck()]; if (!c) return;
   const { hourly: h, daily: d } = c.data;
-  $('updated').textContent = 'updated ' + new Date(c.at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  $('updated').textContent = 'updated ' + new Date(c.at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})
+    + (c.data.met_updated ? ' · yr.no / MET Norway' : ' · Open-Meteo');
 
   const byDay = {};
   h.time.forEach((t, i) => { const day = t.slice(0, 10); (byDay[day] = byDay[day] || []).push(i); });
@@ -351,13 +434,14 @@ function render(){
     const ddate = dt.toLocaleDateString([], {month:'short', day:'numeric'});
     const syms = [3,9,15,21].map(hr => {
       const i = idx.find(j => +h.time[j].slice(11,13) >= hr);
-      return i == null ? '' : sym(h.weather_code[i], h.is_day[i])[0];
+      return i == null ? '' : symAt(h, i)[0];
     }).join('');
     const pSum = d.precipitation_sum[di] || 0;
     const maxP = Math.max(1, ...idx.map(i => h.precipitation[i]));
     const rows = idx.map(i => {
-      const hh = h.time[i].slice(11, 16);
-      const [s, label] = sym(h.weather_code[i], h.is_day[i]);
+      const span = h.span ? h.span[i] : 1;
+      const hh = span === 1 ? h.time[i].slice(11, 16) : h.time[i].slice(11, 13) + '–' + String((+h.time[i].slice(11, 13) + span) % 24).padStart(2, '0');
+      const [s, label] = symAt(h, i);
       const p = h.precipitation[i] || 0;
       const barW = p > 0 ? Math.max(6, Math.round(p / maxP * 100)) : 0;
       const feels = h.apparent_temperature ? `<td class="fl">${fmtT(h.apparent_temperature[i])}</td>` : '<td class="fl">—</td>';
@@ -367,7 +451,7 @@ function render(){
         <td class="tmp ${tCls(h.temperature_2m[i])}">${fmtT(h.temperature_2m[i])}</td>
         ${feels}
         <td class="pr ${p > 0 ? '' : 'zero'}">${p > 0 ? fmtP(p) : '0'}${p > 0 ? `<span class="bar" style="right:${100 - barW}%"></span>` : ''}</td>
-        <td class="wnd">${fmtW(h.wind_speed_10m[i])} <span class="gust">(${fmtW(h.wind_gusts_10m[i])})</span><span class="arr" style="transform:rotate(${(h.wind_direction_10m[i] + 180) % 360}deg)">↑</span></td>
+        <td class="wnd">${fmtW(h.wind_speed_10m[i])}${h.wind_gusts_10m[i] != null ? ` <span class="gust">(${fmtW(h.wind_gusts_10m[i])})</span>` : ''}<span class="arr" style="transform:rotate(${(h.wind_direction_10m[i] + 180) % 360}deg)">↑</span></td>
       </tr>`;
     }).join('');
     const sun = d.sunrise ? `<div class="sunrow"><span>🌅 ${hhmm(d.sunrise[di])}</span><span>🌇 ${hhmm(d.sunset[di])}</span></div>` : '';
@@ -460,7 +544,7 @@ function renderHistory(d, todayIdx){
 $('histCard').addEventListener('toggle', () => localStorage.setItem('wx_hist', $('histCard').open ? '1' : '0'));
 
 /* ---------- boot ---------- */
-PLACES().forEach(p => { const s = localStorage.getItem('wx2_' + p.id); if (s) try{ cache[p.id] = JSON.parse(s); }catch(e){} });
+PLACES().forEach(p => [p.id, p.id + '@met'].forEach(k => { const s = localStorage.getItem('wx2_' + k); if (s) try{ cache[k] = JSON.parse(s); }catch(e){} }));
 try{ const s = localStorage.getItem('wx_ov'); if (s) ov = JSON.parse(s); }catch(e){}
 renderTabs(); load();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
