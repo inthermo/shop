@@ -87,6 +87,19 @@
     <div class="arr">›</div>
   </a>
 
+  <!-- Jarvis lives on the Ask Server (tailnet/LAN only). Relative on the shop server;
+       rewritten to the tailnet URL when this page is served from the public host. -->
+  <a class="tool" id="jarvisTile" href="/jarvis">
+    <div class="ic">🎙️</div>
+    <div class="t"><h2>Jarvis</h2><p>Talk to it while driving — spoken project status, what's waiting on Will. Tailscale only.</p></div>
+    <div class="arr">›</div>
+  </a>
+  <script>
+    if (/(^|\.)myinthermo\.com$|\.github\.io$/.test(location.hostname)) {
+      document.getElementById('jarvisTile').href = 'https://inthermopc.tail881969.ts.net/jarvis';
+    }
+  </script>
+
   <a class="tool" href="lightning/">
     <div class="ic">⚡</div>
     <div class="t"><h2>Lightning Map</h2><p>Live lightning strikes near you — zoomable, no app needed.</p></div>
