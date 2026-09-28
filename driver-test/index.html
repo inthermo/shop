@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MN Class D Practice Test</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#d9dde3;
+          --accent:#1f5fbf; --ok:#1e8e3e; --okbg:#e6f4ea; --bad:#c5221f; --badbg:#fce8e6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1e232b; --ink:#e8eaed; --muted:#9aa3b0; --line:#343b46;
+            --accent:#6ea4ff; --ok:#6fcf8a; --okbg:#1c3325; --bad:#ff8a80; --badbg:#3a1f1e; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:16px; }
+  h1 { font-size:1.4rem; margin:.3em 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin:14px 0; }
+  .muted { color:var(--muted); font-size:.92rem; }
+  button { font:inherit; cursor:pointer; border-radius:10px; }
+  .pick { display:block; width:100%; text-align:left; padding:14px 16px; margin:8px 0;
+          background:var(--card); color:var(--ink); border:1px solid var(--line); }
+  .pick:hover:not(:disabled) { border-color:var(--accent); }
+  .pick.ok { background:var(--okbg); border-color:var(--ok); }
+  .pick.bad { background:var(--badbg); border-color:var(--bad); }
+  .pick:disabled { cursor:default; }
+  .primary { background:var(--accent); color:#fff; border:0; padding:12px 20px; font-weight:600; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .row .pick { flex:1 1 200px; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--accent); }
+  .explain { margin-top:12px; padding:12px; border-radius:8px; background:var(--bg); }
+  .big { font-size:2.4rem; font-weight:700; }
+  .pass { color:var(--ok); } .fail { color:var(--bad); }
+  .miss { border-top:1px solid var(--line); padding:10px 0; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+// [question, [choices...], index of correct choice, explanation]
+const TESTS = {
+ "Official DPS Practice Test (25 questions)": [
+  ["You may pass another vehicle if the line dividing your lane from the lane you wish to enter is a ____ line.", ["Broken white","Double solid yellow","Solid yellow","Solid white"], 0, "Broken lines mean passing/lane changes are allowed when safe. (Manual Ch. 5 — Pavement Markings)"],
+  ["When making a turn, you must ____ your speed.", ["Increase","Maintain","Vary","Reduce"], 3, "Slow down before and during every turn. (Manual Ch. 3 — Turns)"],
+  ["To prepare for anything coming up on the road ahead, you should:", ["Continually scan the entire road and all roadsides","Stare straight ahead at all times","Drive with your left foot resting lightly on the brake pedal","Maintain focus toward the middle of the road"], 0, "SIPDE: Scan, Identify, Predict, Decide, Execute. (Manual Ch. 6 — Using the SIPDE System)"],
+  ["You are driving on a busy street, and your vehicle's accelerator sticks open. You should:", ["Blow your horn","Slam on your brakes","Turn on your four-way flashers"], 2, "Warn others with your flashers, shift to neutral, brake, and steer off the road when safe. (Manual Ch. 6 — Stuck Gas Pedal)"],
+  ["True or false: When approaching a reduced conflict intersection, you may not turn left.", ["True","False"], 0, "At a reduced conflict (J-turn) intersection you turn right, then U-turn at the median. (Manual Ch. 3 — Reduced Conflict Intersections)"],
+  ["At night, it is hardest to see:", ["Road signs","Pedestrians","Other motorists","Streetlights"], 1, "Pedestrians have no lights and are hard to see at night. (Manual Ch. 4 — Sharing the Road)"],
+  ["If you stop along the road at night:", ["Turn off all your lights","Use your parking lights only","Use your headlights only","Turn on your emergency flashers and leave your low beams turned on"], 3, "(Manual Ch. 3 — Highway Parking)"],
+  ["Pedestrians using guide dogs or white canes must:", ["Be given the right-of-way at corners only","Cross at intersections with traffic controls only","Never cross without being assisted by other pedestrians"], 0, "Official answer. In practice: always yield to blind pedestrians. (Manual Ch. 4 — Watch for Pedestrians)"],
+  ["Before you leave a parking space that is parallel to the curb, you should:", ["Sound your horn","Turn on your 4-way flasher","Look for traffic by turning your head","Look for traffic by using your inside rear-view mirror"], 2, "Mirrors miss your blind spot — turn your head. (Manual Ch. 3 — Changing Lanes)"],
+  ["On a road with three or more lanes traveling in the same direction, stay in the ____ lane, except to pass.", ["Left-hand","Shoulder","Middle","Right-hand"], 3, "Keep right except to pass. (Manual Ch. 3)"],
+  ["When driving through fog or rain, it is advisable to:", ["Turn on your parking lights only","Turn on your 4-way hazard lights","Turn on your headlights to low-beam"], 2, "Low beams — high beams reflect back at you. (Manual Ch. 6 — Driving in Heavy Rain or Fog)"],
+  ["Preparing to smoke and smoking while driving:", ["Do not affect driving abilities","Help maintain driver alertness","Are distracting activities","Are not distracting activities"], 2, "(Manual Ch. 6 — Distracted Driving)"],
+  ["What does alcohol do to your driving skills and judgment?", ["It has no effect on either driving skills or judgment","It has no effect on judgment but harms driving skills","It helps driving skills but harms your judgment","It harms both driving skills and judgment"], 3, "(Manual Ch. 8 — Effect of Alcohol on Driving Skills)"],
+  ["A red arrow pointing to the right on a traffic light means?", ["Turn right after you have come to a complete stop","Do not turn right until the light turns green","Turn right after slowing and checking traffic","Turn right only if there are no pedestrians crossing the street at the moment"], 1, "(Manual Ch. 5 — A Red Arrow)"],
+  ["When you enter traffic from a stop (e.g. pulling away from the curb), you:", ["Should drive slower than other traffic for 200 feet","Need a large enough gap to get up to the speed of traffic","Should wait for the first vehicle to pass, then pull into the lane"], 1, "(Manual Ch. 3 — Changing Lanes; Ch. 6 — SIPDE)"],
+  ["You should always use your emergency flashers when:", ["You are double parked in a traffic lane","You are parked in a marked parking spot","Your vehicle has broken down on the roadway"], 2, "(Manual Ch. 6 — What to Do if You Become Stranded)"],
+  ["The traffic light is red, but a police officer is telling you to proceed. What should you do?", ["Refuse to move your vehicle","Proceed as the police officer told you","Honk your horn"], 1, "An officer's directions override signs and signals. (Manual Ch. 5 — Traffic Officers)"],
+  ["If you are a minor and your cell phone rings while you are driving, you should:", ["Answer it if you have a hands free device","Let the call go to voice mail","Answer if the call is from your parent or guardian","Text the caller that you are driving"], 1, "Drivers under 18 may not use a phone at all while driving, except to call 911. (Manual Ch. 1 — Under 18)"],
+  ["At night, if an oncoming vehicle fails to dim its high beams, look:", ["Toward the center of the roadway","Toward the right edge of your lane","Toward the left edge of your lane","Straight ahead in your lane"], 1, "(Manual — Headlights)"],
+  ["Teenage drivers are more likely to be involved in a crash when:", ["They are driving with adult passengers","They are driving with teenage passengers","They are driving without any passengers"], 1, "That's why provisional licenses limit teen passengers. (Manual Ch. 1 — Your Provisional License)"],
+  ["Use your headlights on rainy, snowy, or foggy days:", ["On the high beam setting","So other drivers can see you","To warn others of bad conditions"], 1, "(Manual Ch. 2 — Headlights and Taillights)"],
+  ["When you want to make a right turn, your car must be:", ["Near the center of the street","Close to the left side of the street","Close to the right of the street"], 2, "(Manual Ch. 3 — Turns)"],
+  ["When a traffic light turns green, should you go immediately?", ["No, because you must wait five seconds before proceeding","Yes, or you could be given a ticket for causing gridlock","Yes, but you must yield to any vehicle or person still in the intersection"], 2, "(Manual Ch. 5 — A Green Light)"],
+  ["If you see orange construction signs and cones on a freeway, you must:", ["Change lanes and maintain your current speed","Be prepared for workers and equipment ahead","Slow down because the lane ends"], 1, "(Manual Ch. 5 — Signs)"],
+  ["True or false: After being pulled over by law enforcement, the driver should immediately exit the vehicle and quickly approach the officer's squad car.", ["True","False"], 1, "Stay in your vehicle with your hands visible. (Manual Ch. 4 — When Stopped by Law Enforcement)"]
+ ],
+ "Practice Test 1 — Signs & Rules": [
+  ["An eight-sided (octagon) sign always means:", ["Stop","Yield","Railroad crossing","School zone"], 0, "Only STOP signs are octagons."],
+  ["A downward-pointing triangle sign means:", ["Yield","Stop","Warning","No passing"], 0, "Triangle = YIELD. Slow down and give the right-of-way; stop if needed."],
+  ["A five-sided (pentagon) sign warns of:", ["A school zone or school crossing","A no-passing zone","A railroad crossing","A hospital"], 0, "Pentagon signs mark school zones and school crossings."],
+  ["A round yellow sign with an X and \"RR\" means:", ["Railroad crossing ahead","Road closed","Rest area","Right turn only"], 0, "Round yellow = advance warning of a railroad crossing."],
+  ["Diamond-shaped signs are:", ["Warning signs","Regulatory signs","Guide signs","Service signs"], 0, "Diamonds warn of hazards or changes ahead (curves, merges, etc.)."],
+  ["Orange signs mean:", ["Construction or work zone","Recreation area","Hospital ahead","School zone"], 0, "Orange = work zone. Slow down and watch for workers."],
+  ["A flashing RED traffic light means:", ["Come to a full stop, then go when safe","Slow down and proceed with caution","The light is broken, keep going","Stop only if cars are coming"], 0, "Treat a flashing red exactly like a stop sign."],
+  ["A flashing YELLOW traffic light means:", ["Slow down and proceed with caution","Stop completely","The light is about to turn red","Pedestrians only"], 0, "Flashing yellow = caution; you don't have to stop."],
+  ["A solid yellow line on YOUR side of the center line means:", ["No passing","Passing allowed","Two-way left turn lane","Lane ends"], 0, "Don't cross a solid yellow line on your side to pass."],
+  ["White lane lines separate:", ["Lanes of traffic going the same direction","Lanes of traffic going opposite directions","Parking spaces only","Bike lanes only"], 0, "White = same direction. Yellow = opposite directions."],
+  ["Unless a sign says otherwise, you may turn right on a red light:", ["After coming to a full stop and yielding","Without stopping if the road is clear","Never in Minnesota","Only between 10 PM and 6 AM"], 0, "Stop completely, yield to pedestrians and traffic, then turn."],
+  ["At a four-way stop, you and another driver stop at the same time. The other car is on your right. Who goes first?", ["The car on the right","You do","Whoever is bigger","Whoever honks first"], 0, "When you arrive at the same time, yield to the driver on your right."],
+  ["For drivers 21 and older, the legal blood alcohol limit in Minnesota is:", ["0.08","0.10","0.05","0.02"], 0, "0.08 BAC or more is a DWI. You can still be charged below 0.08 if impaired."],
+  ["For drivers under 21, how much alcohol is legal while driving?", ["None — any amount is illegal","Up to 0.02","Up to 0.04","Up to 0.08"], 0, "Minnesota's \"Not a Drop\" law — zero alcohol for drivers under 21."],
+  ["Minnesota's Implied Consent law means:", ["By driving, you've agreed to be tested for alcohol/drugs if an officer has cause","You must consent to a vehicle search","You agree to pay any tickets","You must carry insurance"], 0, "Refusing a lawful test in Minnesota is itself a crime and leads to license revocation."],
+  ["The minimum safe following distance in good conditions is:", ["At least 3 seconds","1 second","One car length","10 feet"], 0, "Use the 3-second rule; add more time in bad weather or behind trucks."],
+  ["A school bus ahead has its red lights flashing and stop arm out. You must:", ["Stop at least 20 feet away","Slow to 10 mph and pass carefully","Stop only if you are behind it","Honk and pass on the left"], 0, "Stop at least 20 feet away. Traffic both directions must stop unless the road is divided by a physical barrier/median."],
+  ["An ambulance with siren and lights is coming toward you. You should:", ["Pull to the right edge of the road and stop","Speed up to get out of the way","Stop right where you are, even in an intersection","Keep driving at the same speed"], 0, "Pull over to the right and stop (clear of intersections) until it passes."],
+  ["A police car is stopped on the shoulder with lights flashing. Minnesota's Move Over law says you must:", ["Move one lane away if safe, or slow down","Stop behind it","Honk to let them know you're passing","Nothing, if you're under the speed limit"], 0, "Move over a lane when you safely can; if you can't, slow down. Applies to emergency vehicles, tow trucks, and road crews with flashing lights."],
+  ["You must dim your high beams when an oncoming vehicle is within:", ["1,000 feet","200 feet","500 feet","2,000 feet"], 0, "Dim within 1,000 feet of oncoming traffic."],
+  ["You must dim your high beams when you are following another vehicle within:", ["200 feet","1,000 feet","50 feet","500 feet"], 0, "Dim within 200 feet of the car you're following."],
+  ["In Minnesota, your headlights must be on whenever:", ["It is raining, snowing, sleeting or hailing","It is cloudy","You drive on a freeway","You carry passengers"], 0, "Also from sunset to sunrise and any time you can't see clearly 500 feet ahead. (Manual p.23, 73)"],
+  ["Under Minnesota's hands-free law, while driving you may:", ["Use your phone by voice or a single touch, not holding it","Hold your phone if you're at a red light","Text if you're going under 25 mph","Watch videos if the phone is mounted"], 0, "You can't hold your phone while driving — including at stop lights. Voice commands / one touch only."],
+  ["Who must wear a seat belt in Minnesota?", ["The driver and every passenger, in every seat","Only the driver","Only front-seat riders","Only children"], 0, "Everyone, every seat. Children need a proper car seat or booster."],
+  ["You may not park closer than ____ to a fire hydrant.", ["10 feet","5 feet","3 feet","25 feet"], 0, "Minnesota: no parking within 10 feet of a fire hydrant."],
+  ["You must use your turn signal at least ____ before turning.", ["100 feet","20 feet","50 feet","500 feet"], 0, "Signal at least 100 feet before a turn or lane change."],
+  ["A pedestrian is in a crosswalk ahead. You must:", ["Stop and stay stopped until they have crossed your lane","Slow down and drive around them","Honk so they hurry","Only stop if there is a traffic light"], 0, "Minnesota drivers must stop for pedestrians in crosswalks, marked or unmarked."],
+  ["When passing a bicycle, leave at least:", ["3 feet","1 foot","6 inches","10 feet"], 0, "At least 3 feet of clearance until you're safely past. You may cross the center line to pass a bicyclist when safe, even in a no-passing zone. (Manual p.48)"],
+  ["When entering a roundabout you should:", ["Yield to traffic already in the roundabout and go counter-clockwise","Stop and wait for all traffic to clear","Go clockwise","Speed up to merge"], 0, "Traffic inside has the right-of-way. Travel to the right (counter-clockwise)."],
+  ["You're in a crash where someone is hurt. First you should:", ["Stop, help as you safely can, and call 911","Leave and report it later","Move all vehicles before calling anyone","Only exchange insurance info"], 0, "Always stop. Leaving the scene of an injury crash is a serious crime."]
+ ],
+ "Practice Test 2 — Safe Driving & Winter": [
+  ["At an intersection with no signs or signals, you must yield to:", ["The vehicle on your right","The vehicle on your left","The faster vehicle","Nobody — you go first"], 0, "At uncontrolled intersections, yield to the car on your right."],
+  ["You're turning left on a green light (no arrow). You must:", ["Yield to oncoming traffic and pedestrians","Go first because you have a green light","Turn quickly before oncoming cars","Wait for the light to turn yellow"], 0, "A plain green doesn't protect your left turn. Oncoming traffic goes first."],
+  ["A lane is closed ahead in a work zone and traffic is heavy. Minnesota recommends you:", ["Zipper merge — use both lanes to the merge point and take turns","Merge right away, as early as possible","Straddle both lanes to block cars","Stop and wait for a gap"], 0, "MnDOT promotes the zipper merge in heavy traffic: use both lanes until the merge point, then take turns."],
+  ["Your car starts to skid. You should:", ["Ease off the gas and steer where you want to go","Slam on the brakes","Turn the wheel hard the other way","Speed up"], 0, "Don't slam the brakes. Take your foot off the gas and steer in the direction you want the car to go. (Manual p.82)"],
+  ["Your car starts to hydroplane on a wet road. You should:", ["Ease off the gas and keep steering straight","Brake hard","Turn sharply","Speed up to regain grip"], 0, "Let the car slow down; avoid hard braking or sharp steering."],
+  ["You see a deer near the road ahead. You should:", ["Slow down, sound your horn, be ready to stop, and watch for more deer","Speed up to get past it","Flash your high beams and keep your speed","Swerve onto the shoulder"], 0, "Deer often travel in groups — where there's one, expect more. (Manual p.84)"],
+  ["You're stranded in your car during a blizzard. You should:", ["Stay with your vehicle, run the engine a little each hour, and keep the exhaust pipe clear of snow","Walk to find help","Run the engine nonstop with windows closed","Leave the car and flag down traffic"], 0, "Stay put. A blocked tailpipe can cause carbon monoxide poisoning — keep it clear and crack a window."],
+  ["A car at 55 mph needs about 130–140 feet to stop. A loaded semi truck needs:", ["More than 400 feet","About the same","About 100 feet","About 200 feet"], 0, "Never cut in front of a truck and slow down. (Manual p.52)"],
+  ["How much moving water can sweep a vehicle away?", ["2 feet","6 feet","4 feet","10 feet"], 0, "Just 6 inches reaches the underside of most cars. Turn around, don't drown. (Manual p.85)"],
+  ["A snowplow is working ahead of you. You should:", ["Stay well back; pass only when you can see the entire plow","Pass quickly on the right","Follow closely to use its path","Honk so the driver sees you"], 0, "Plows move slowly, throw snow, and stop often. Give lots of room and don't pass unless you can see the whole plow. (Manual p.81)"],
+  ["Before changing lanes, you should check your blind spot by:", ["Turning your head and looking over your shoulder","Checking the rear-view mirror only","Honking","Speeding up"], 0, "Mirrors don't show everything. Always do a quick head check."],
+  ["When driving near a large truck:", ["If you can't see the driver in their mirrors, they can't see you","Trucks can stop faster than cars","It's safe to cut in close in front of them","Trucks have no blind spots"], 0, "Trucks have big \"no-zones.\" Don't linger beside them or cut in close."],
+  ["A motorcycle is in front of you in your lane. It is entitled to:", ["The full width of the lane","Half the lane","The shoulder","Nothing — you can share the lane"], 0, "Never drive alongside a motorcycle in its lane. Motorcyclists may legally lane-split/filter in Minnesota — don't block them."],
+  ["A STEADY yellow light means:", ["The light is about to turn red — stop if you safely can","Speed up to beat the red","Same as green","Flashing caution"], 0, "Stop if you can do it safely; don't speed up to beat it."],
+  ["A green arrow means:", ["You may turn in that direction; oncoming traffic is stopped","You must yield to oncoming traffic","You may go straight only","The light is broken"], 0, "Green arrow = protected turn. Still watch for pedestrians."],
+  ["A solid white line between lanes means:", ["Changing lanes is discouraged","Passing is encouraged","Two-way traffic","Parking allowed"], 0, "Solid white: stay in your lane unless you must change."],
+  ["Double solid yellow center lines mean:", ["No passing in either direction","Passing allowed both ways","Passing allowed one way","Bike lane"], 0, "Neither direction may cross to pass."],
+  ["A broken yellow line on your side of the center means:", ["You may pass when it is safe","No passing","Lane ends","Stop ahead"], 0, "Broken yellow = passing allowed if the way is clear."],
+  ["You may NOT pass another vehicle within ____ of an intersection or railroad crossing.", ["100 feet","10 feet","25 feet","1 mile"], 0, "No passing within 100 feet of an intersection or railroad crossing."],
+  ["Railroad crossing lights are flashing but you don't see a train. You should:", ["Stop and wait until the lights stop flashing","Go if you don't see a train","Drive around the gates","Honk and continue"], 0, "Never go around gates or ignore flashing lights. Trains are faster and closer than they look."],
+  ["Your car stalls on railroad tracks. You should:", ["Get everyone out and away, then call the number on the blue sign","Try to restart it as long as you can","Stay in the car","Push the car off by yourself"], 0, "Get out first and walk away at a 45° angle toward the direction the train is coming from. The blue Emergency Notification sign at the crossing has a phone number and crossing ID."],
+  ["Parking UPHILL next to a curb, turn your front wheels:", ["Away from the curb","Toward the curb","Straight ahead","It doesn't matter"], 0, "If the car rolls back, the tire catches the curb."],
+  ["Parking DOWNHILL next to a curb, turn your front wheels:", ["Toward the curb","Away from the curb","Straight ahead","It doesn't matter"], 0, "If the car rolls forward, it rolls into the curb."],
+  ["What is the only thing that sobers a person up?", ["Time","Coffee","A cold shower","Eating food"], 0, "Only time lets your body remove alcohol."],
+  ["Why do drivers who have been drinking often think they are fine to drive?", ["Alcohol impairs judgment, so they misjudge how impaired they are","Alcohol sharpens reflexes","Alcohol affects only vision","Food cancels out the alcohol"], 0, "Alcohol impairs judgment — you misjudge your impairment, speed and stopping distance. Driving ability is impaired after just one drink. (Manual p.91)"],
+  ["An open alcohol container in the passenger area of a car is:", ["Illegal","Legal if the passenger holds it","Legal if the car is parked","Legal if it's beer"], 0, "No open containers anywhere drivers or passengers sit. Keep them in the trunk (or, with no trunk, an area not normally occupied — never the glove box). (Manual p.96)"],
+  ["If you move, you must apply for a duplicate license with your new address within:", ["30 days","1 year","90 days","6 months"], 0, "Update your address within 30 days."],
+  ["While driving, you must have with you:", ["Your valid license and proof of insurance","Your birth certificate","Your title","Your Social Security card"], 0, "Show both if asked by police."],
+  ["Your crash caused only property damage and you don't have your insurance information with you. You must provide it within:", ["72 hours","10 days","24 hours","30 days"], 0, "Give your insurer's name to the officer or other driver within 72 hours. (Manual p.39)"],
+  ["You're getting drowsy on a long drive. The best thing to do is:", ["Pull over somewhere safe and rest","Turn up the radio","Open the window","Drink an energy drink and keep going"], 0, "The only cure for fatigue is rest. Radio, fresh air and stay-awake products don't have a lasting effect. (Manual p.82, 91)"]
+ ],
+ "Practice Test 3 — Speed, Freeways & Emergencies": [
+  ["Unless posted otherwise, the speed limit in an urban district (city) is:", ["30 mph","25 mph","40 mph","45 mph"], 0, "30 mph in urban districts unless signs say otherwise."],
+  ["The speed limit in an alley is:", ["10 mph","5 mph","15 mph","20 mph"], 0, "Minnesota: 10 mph in alleys."],
+  ["Unless posted otherwise, the speed limit on roads that are not alleys or urban/town roads is:", ["55 mph","60 mph","65 mph","50 mph"], 0, "10 mph alleys, 30 mph urban/town, 55 mph elsewhere. (Manual p.26)"],
+  ["The \"basic speed rule\" means:", ["Never drive faster than is safe for conditions, even under the limit","You may always drive the posted limit","You can go 5 over","Minimum speed is 40"], 0, "In snow, rain, fog or heavy traffic you can be ticketed below the posted limit."],
+  ["Brown signs point you to:", ["Parks, recreation and historic sites","Hospitals","Road work","School zones"], 0, "Brown = recreational and cultural areas."],
+  ["Blue signs show:", ["Motorist services — gas, food, lodging, hospital","Warnings","Speed limits","Construction"], 0, "Blue = services."],
+  ["Green signs show:", ["Directions and distances","Warnings","Stop ahead","Construction"], 0, "Green = guide signs (exits, routes, mileage)."],
+  ["Fluorescent yellow-green signs warn of:", ["Pedestrian, school or bicycle crossings","Construction","Railroad","Road closures"], 0, "That bright color marks school, pedestrian and bike crossings."],
+  ["White rectangular signs (like SPEED LIMIT) are:", ["Regulatory — they are the law","Suggestions","Warnings only","Guide signs"], 0, "Regulatory signs must be obeyed."],
+  ["A center lane marked with left-turn arrows both ways is for:", ["Left turns from either direction only","Passing","Driving long distances","Parking"], 0, "Two-way left-turn lanes are for turning only — not passing or traveling."],
+  ["When entering a freeway you should:", ["Use the ramp/acceleration lane to match traffic speed and yield to freeway traffic","Stop at the end of the ramp","Enter slowly and let traffic go around you","Merge immediately without looking"], 0, "Get up to speed, signal, find a gap, and merge smoothly."],
+  ["You missed your freeway exit. You should:", ["Continue to the next exit","Back up on the shoulder","Make a U-turn in the median","Stop and wait"], 0, "Never back up or U-turn on a freeway."],
+  ["Before opening your door after parking on a street, you should:", ["Check for cars and bicyclists coming from behind","Open quickly","Honk first","Turn on your hazards"], 0, "\"Dooring\" is a common cause of bike crashes. Look first."],
+  ["A child who has outgrown a forward-facing car seat must ride in a booster seat until:", ["Age 9, or until they outgrow the booster","Age 6","Age 12","They can reach the pedals"], 0, "Minnesota's 2024 child passenger law. (Manual p.38)"],
+  ["Children under age 13 must ride:", ["In the back seat, when one is available","In the front seat","Anywhere with a seat belt","In the front seat if the airbag is on"], 0, "Minnesota law — front airbags can seriously hurt children. (Manual p.38–39)"],
+  ["Headlights must be on from sunset to sunrise and when you can't see clearly for:", ["500 feet","100 feet","1 mile","50 feet"], 0, "Also whenever it's raining, snowing, sleeting or hailing. (Manual p.23, 73)"],
+  ["A funeral procession is passing through an intersection. You should:", ["Yield and let the whole procession pass","Cut into the line","Honk","Pass it quickly"], 0, "Don't cut into or interrupt a funeral procession."],
+  ["Near a blind pedestrian with a white cane or guide dog, you should NOT:", ["Honk your horn or rev your engine","Stop and wait","Give them the right-of-way","Watch them until they've crossed"], 0, "Noise can distract them. Yield the right-of-way. (Manual p.47)"],
+  ["In a work zone with a flagger, you should:", ["Follow the flagger's directions","Follow only the posted signs","Ignore them if the road looks clear","Honk and pass"], 0, "Flaggers' directions come first. Slow down — work zone fines are higher."],
+  ["Someone is tailgating you. The best response is:", ["Move over or slow slightly to let them pass; don't brake-check","Tap your brakes hard","Speed up","Stop in the lane"], 0, "Give them room to get around you, and increase your own space ahead."],
+  ["Another driver is acting aggressively toward you. You should:", ["Avoid eye contact, don't respond, and let them go","Yell back","Follow them","Make hand gestures"], 0, "Don't engage. If you feel threatened, call 911 when safe."],
+  ["Your brakes suddenly fail. You should:", ["Pump the brake pedal, shift to a lower gear, and use the parking brake gently","Turn off the engine","Jump out","Shift into park"], 0, "Pumping may build pressure; lower gears and the parking brake help slow you."],
+  ["You have a tire blowout. You should:", ["Hold the wheel firmly, ease off the gas, and slow gradually","Brake hard right away","Turn sharply to the shoulder","Speed up"], 0, "Keep control first; brake gently once the car is steady."],
+  ["Your gas pedal sticks. You should:", ["Shift to neutral and brake, then pull off the road","Turn off the key while moving fast","Pump the gas","Jump out"], 0, "Neutral cuts power to the wheels; then brake and steer to safety."],
+  ["You must stop on a freeway shoulder in an emergency. If you have flares, place them:", ["100 to 500 feet behind your vehicle","10 to 50 feet behind your vehicle","Only in front of your vehicle","1,000 feet behind your vehicle"], 0, "On the right edge of the main road. Also raise the hood or tie a white cloth to the antenna or door handle, and use hazard lights. (Manual p.77)"],
+  ["Your windshield wipers suddenly fail in heavy rain. You should:", ["Slow down, turn on your hazard lights, and pull off the road when safe","Brake hard immediately","Keep going at the same speed","Speed up to get out of the rain"], 0, "Don't brake suddenly if vehicles are behind you; get to a safe spot. (Manual p.86)"],
+  ["Your right wheels drop off the edge of the pavement. You should:", ["Ease off the gas, hold the wheel firmly, and steer back on gently once slowed","Jerk the wheel back onto the road","Brake hard","Speed up"], 0, "Swerving back at speed can flip the car or send you into oncoming traffic. (Manual p.84)"],
+  ["Your horn should be used to:", ["Warn others of danger","Show you're angry","Greet friends","Hurry slow drivers"], 0, "The horn is a safety warning, not for venting."],
+  ["You come to a stop sign with no marked stop line or crosswalk. You should stop:", ["Before entering the intersection, where you can see traffic","In the middle of the intersection","Only if cars are coming","After the sign"], 0, "Stop at the line, before the crosswalk, or before entering the intersection."],
+  ["An emergency vehicle with lights and siren approaches while you are in an intersection. You should:", ["Continue through the intersection, then pull to the right and stop","Stop in the middle of the intersection","Back up out of the intersection","Speed up and stay ahead of it"], 0, "Never stop in an intersection — clear it, then pull right and stop. (Manual p.44, 77)"]
+ ],
+ "Practice Test 4 — Permits, Parking & Penalties": [
+  ["An instruction-permit holder under 18 must be supervised by a licensed driver at least:", ["21 years old","18 years old","25 years old","16 years old"], 0, "Under 18: supervisor must be 21+. Permit holders 18 and older: supervisor 18+. (Manual p.13–14)"],
+  ["To take the road test, a driver under 18 must have held an instruction permit for at least:", ["Six months","Three months","One year","30 days"], 0, "Six months with no moving or alcohol/drug convictions. (Manual p.13–14)"],
+  ["If a parent does NOT take the parent class, a teen's supervised driving log must show at least:", ["50 hours, including 15 at night","40 hours, including 10 at night","30 hours, including 5 at night","100 hours, including 20 at night"], 0, "40 hours (15 night) with the parent class; 50 hours (15 night) without. (Manual p.14)"],
+  ["During the first six months of a provisional license, you may carry how many passengers under 20 (no parent present, not family)?", ["One","None","Two","Three"], 0, "First 6 months: one. Second 6 months: up to three. Immediate family is excepted. (Manual p.15)"],
+  ["During the first six months of a provisional license, you may not drive between:", ["Midnight and 5 a.m.","10 p.m. and 6 a.m.","9 p.m. and 5 a.m.","11 p.m. and 4 a.m."], 0, "Exceptions: with a licensed driver 25+, home–work, home–school event, or driving for work. (Manual p.14)"],
+  ["A driver under 18 with a permit or provisional license may use a cell phone while driving:", ["Only to call 911 in an emergency","With a hands-free device","At red lights","To talk with a parent"], 0, "No phone use at all — handheld or hands-free — except 911. (Manual p.13, 79)"],
+  ["A driver under 21 caught driving after drinking any alcohol faces a first-offense license suspension of:", ["30 days","7 days","180 days","1 year"], 0, "Not a Drop law: 30 days first offense, 180 days second. (Manual p.95)"],
+  ["A first-offense DWI can bring up to:", ["90 days in jail and a $1,000 fine","10 days in jail and a $100 fine","1 year in jail and a $3,000 fine","A warning only"], 0, "Plus loss of your license. (Manual p.94)"],
+  ["On a two-lane highway posted 55 mph or more, while passing you may exceed the speed limit by up to:", ["10 mph","5 mph","15 mph","You may never exceed it"], 0, "Only while lawfully passing a vehicle going the same direction. (Manual p.26, 34)"],
+  ["You may not park within ____ of a crosswalk at an intersection.", ["20 feet","10 feet","30 feet","50 feet"], 0, "Also: 30 ft from a stop sign or signal, 50 ft from a railroad rail, 10 ft from a hydrant. (Manual p.35)"],
+  ["You may not park within ____ of the nearest rail of a railroad crossing.", ["50 feet","10 feet","20 feet","100 feet"], 0, "(Manual p.35)"],
+  ["When parallel parked, your wheels must be no more than ____ from the curb.", ["12 inches","6 inches","18 inches","24 inches"], 0, "(Manual p.35)"],
+  ["When railroad crossing lights are flashing, stop at least ____ from the nearest rail or gate.", ["10 feet","5 feet","20 feet","50 feet"], 0, "Only cross when you can clear the tracks by 10 feet without stopping. (Manual p.53)"],
+  ["Do not pass on a hill or curve where you can't see ahead for at least:", ["700 feet","300 feet","500 feet","1,000 feet"], 0, "Also no passing within 100 ft of an intersection, tunnel, underpass or railroad crossing. (Manual p.34)"],
+  ["Unless on official business, you must stay at least ____ behind a fire truck responding to an emergency.", ["500 feet","100 feet","200 feet","1,000 feet"], 0, "(Manual p.44, 77)"],
+  ["A flashing yellow left-turn arrow means:", ["You may turn left after yielding to oncoming traffic and pedestrians","Oncoming traffic is stopped; turn freely","Stop and wait for a green arrow","The signal is broken; treat it as a stop sign"], 0, "Flashing yellow = caution. Yield to oncoming vehicles close enough to be a hazard. (Manual p.67)"],
+  ["Speeding in a work zone when workers are present adds a fine of:", ["$300","$50","$100","Nothing extra"], 0, "The $300 is on top of the speeding ticket. (Manual p.54, 64)"],
+  ["In Minnesota, motorcycles may lane-split between lanes of moving traffic only at speeds no greater than:", ["25 mph, and no more than 15 mph faster than traffic","35 mph","15 mph","Any speed"], 0, "Legal since 2025. Don't block or open your door on them. (Manual p.49–50)"],
+  ["You're pulled over after dark. Along with staying in your vehicle, you should:", ["Turn on your interior light and keep your hands on the steering wheel","Dig your license out of the glove box before the officer arrives","Turn off all your lights","Step out to meet the officer"], 0, "If your documents are out of reach, tell the officer where they are before reaching. (Manual p.45)"],
+  ["At a J-turn (reduced-conflict intersection) on a divided highway, to go left or straight from the side road you:", ["Turn right, move into the left lane, then make a U-turn at the median opening","Cross both directions at once","Turn left directly into the median","Back into the median"], 0, "J-turns reduce deadly broadside crashes. (Manual p.32)"],
+  ["A freeway ramp meter turns green. How many vehicles may go?", ["One","Two","All waiting vehicles","As many as fit before red"], 0, "One car per green. (Manual p.68, 74)"],
+  ["If you park on a highway at night, your front and rear lights must be visible from at least:", ["500 feet","100 feet","200 feet","1,000 feet"], 0, "At least one white or amber front light and one red taillight. Use parking or hazard lights, headlights on low beam. (Manual p.37)"],
+  ["To get a Minnesota driver's license, your vision must be at least:", ["20/40","20/20","20/80","20/100"], 0, "Plus at least 105° peripheral vision. (Manual p.10)"],
+  ["Passing a stopped school bus with its stop arm out carries a minimum fine of:", ["$500","$50","$100","$1,000"], 0, "(Manual p.41–42)"],
+  ["True or false: Driving faster than 100 mph can cause you to lose your license.", ["True","False"], 0, "Driving over 100 mph results in license revocation. (Manual p.27)"],
+  ["True or false: It is legal to wear headphones in both ears while driving.", ["True","False"], 1, "Headphones in both ears are illegal while driving. (Manual p.79)"],
+  ["True or false: Your body eliminates about one drink per hour.", ["True","False"], 0, "Only time sobers you — coffee and cold showers don't. (Manual p.92)"],
+  ["True or false: No more than three people may ride in the front seat.", ["True","False"], 0, "(Manual p.79)"],
+  ["True or false: If your car hits a utility pole and power lines fall on it, you should stay inside until help arrives.", ["True","False"], 0, "Getting out can electrocute you. (Manual p.86)"],
+  ["True or false: Running out of fuel is a valid emergency reason to stop on a freeway.", ["True","False"], 1, "Running out of fuel is not an emergency — keep your tank filled. (Manual p.77)"]
+ ],
+ "Practice Test 5 — Intersections, Lanes & Emergencies": [
+  ["You are in the intersection waiting to turn left and the light turns from yellow to red. You should:", ["Complete the turn as soon as it is safe","Back up behind the stop line","Stay in the intersection until the next green","Turn right instead"], 0, "Finish the turn when safe; do not back up. (Manual p.66)"],
+  ["While waiting to make a left turn, your front wheels should be:", ["Turned left, ready to go","Pointed straight ahead","Turned right","Turned toward the curb"], 1, "Keep wheels straight with your foot on the brake so a rear-end hit won't push you into oncoming traffic. (Manual p.28)"],
+  ["A traffic signal is dark and not working. You should:", ["Drive through at normal speed","Treat the intersection as an uncontrolled intersection","Always wait for police to arrive","Treat it as a green light for the main road"], 1, "A non-working signal is treated like an uncontrolled intersection. (Manual p.65)"],
+  ["True or false: You may enter an intersection on green even if backed-up traffic means you will stop inside it and block cross traffic.", ["True","False"], 1, "Don't enter unless you can get all the way through without blocking cross traffic. (Manual p.65)"],
+  ["A steady red X over a lane means:", ["You may not drive in that lane","The lane is open with caution","Left turns only","Buses only"], 0, "Lane-use control signal. (Manual p.68)"],
+  ["A steady yellow X over your lane means:", ["Prepare to move safely into another lane; a red X is coming","Speed up to clear the lane","The lane is for left turns only","The lane is open"], 0, "The lane is about to close. (Manual p.68)"],
+  ["A flashing yellow X over a lane means:", ["You may use the lane only to turn left, with caution — oncoming left-turners may use it too","The lane is closed","The freeway lane ends","Buses only"], 0, "Shared left-turn lane. (Manual p.68)"],
+  ["A green downward arrow over a lane means:", ["You may drive in the lane below the arrow","The lane ends ahead","Turn in the arrow's direction only","Stop"], 0, "(Manual p.68)"],
+  ["Shorter, thicker white dashed lines along your lane mean:", ["Your lane is ending","You may pass","A bike lane","A school zone"], 0, "(Manual p.69)"],
+  ["Double solid white lines between lanes mean:", ["You must not change lanes","You may change lanes if safe","Passing is allowed for trucks only","A carpool lane begins"], 0, "(Manual p.69)"],
+  ["Reversible lanes are marked by ____ and may be entered only when the overhead signal shows a green arrow.", ["Dashed double yellow lines","Solid white lines","Single dashed white lines","Orange cones"], 0, "(Manual p.71)"],
+  ["A lane marked with a white diamond symbol is:", ["Reserved for certain uses, such as carpools, buses or bicycles","A lane that is ending","A passing lane for any vehicle","A school zone"], 0, "Carpool lanes are for vehicles with two or more people. (Manual p.59, 71)"],
+  ["Which vehicles may use a high-occupancy vehicle (HOV) lane?", ["Motorcycles, buses and vehicles carrying two or more people","Any vehicle during rush hour","Only buses","Trucks over 26,000 lbs."], 0, "(Manual p.75)"],
+  ["A traffic officer holds up one hand, palm toward you, and gives one long whistle blast. This means:", ["Stop","Go","Turn right","Speed up"], 0, "Palm up + long whistle = stop; motioning + short blasts = go. (Manual p.71)"],
+  ["The hand-and-arm signal for stopping or slowing is:", ["Left arm bent downward","Left arm straight out","Left arm bent upward","Right arm waving"], 0, "Straight out = left turn; bent up = right turn; bent down = stop/slow. (Manual p.48)"],
+  ["True or false: You may use hand and arm signals instead of turn signals at night.", ["True","False"], 1, "Hand signals may be used only in daylight. (Manual p.27)"],
+  ["After passing a vehicle, return to the right lane when:", ["You can see the entire vehicle you passed in your rearview mirror","You are one car length ahead","Your front bumper passes theirs","The other driver flashes their headlights"], 0, "And before coming within 100 feet of an oncoming vehicle. (Manual p.34)"],
+  ["True or false: You may pass on the right using the shoulder when the car ahead is turning left.", ["True","False"], 1, "Never pass on the right using a bike lane, the shoulder, or off the pavement. (Manual p.34)"],
+  ["U-turns are illegal:", ["On interstate freeways, and near hilltops or curves where other drivers can't see you from 1,000 feet","At every intersection","Only in school zones","Only at night"], 0, "(Manual p.33)"],
+  ["You may not park within ____ of a stop sign, flashing light or traffic signal.", ["30 feet","10 feet","20 feet","50 feet"], 0, "(Manual p.35)"],
+  ["Before driving out of an alley, driveway or parking lot onto a street, you must:", ["Stop before crossing the sidewalk or crosswalk, then yield to pedestrians and traffic","Honk and pull out","Slow to 5 mph","Stop only if a car is coming"], 0, "(Manual p.41, 43)"],
+  ["True or false: You may pass a vehicle that has stopped for a pedestrian in a crosswalk if the next lane is clear.", ["True","False"], 1, "It is illegal to pass a vehicle stopped for a pedestrian. (Manual p.47)"],
+  ["You are in the right lane and a transit bus signals to merge back into traffic from a bus stop. You must:", ["Yield to the bus","Speed up to get past it","Honk","Stop until it leaves the area"], 0, "(Manual p.43)"],
+  ["At an uncontrolled T intersection, who must yield?", ["The driver turning from the road that ends","The driver on the through road","The larger vehicle","Whoever arrives second"], 0, "(Manual p.43)"],
+  ["An emergency vehicle with lights and siren approaches while you are on a one-way street. You should:", ["Pull to the nearest side of the road and stop","Always pull to the right","Stop in your lane","Speed up to clear the way"], 0, "Two-way road: pull right. One-way road: nearest side. (Manual p.44)"],
+  ["True or false: You may drive over an unprotected fire hose if you go slowly.", ["True","False"], 1, "Only when directed by police or a fire official. (Manual p.44)"],
+  ["Reckless driving means:", ["Knowingly ignoring a substantial and unjustifiable risk to others, including racing","Driving 5 mph over the limit","Forgetting to signal once","Driving with a burned-out taillight"], 0, "Careless and reckless driving are both crimes. (Manual p.44)"],
+  ["A truck driver may be unable to see a car up to ____ behind the trailer.", ["200 feet","50 feet","100 feet","500 feet"], 0, "No-zones: up to 20 ft in front, both sides, and up to 200 ft behind. (Manual p.52)"],
+  ["A large truck ahead signals a right turn and leaves an open space on its right. You should:", ["Stay back — trucks make wide right turns; never pass on the right","Pass on the right quickly","Honk and move into the gap","Pass on the shoulder"], 0, "(Manual p.52)"],
+  ["After a train passes at a crossing with more than one track, you should:", ["Make sure no second train is coming on another track before crossing","Go as soon as the last car clears","Drive around the gate","Honk and go"], 0, "(Manual p.53)"],
+  ["Your car stalls on the tracks with a train coming. After getting out, move away:", ["At a 45-degree angle away from the tracks, toward the direction the train is coming from","Along the tracks away from the train","Straight back behind your car","In the direction the train is traveling"], 0, "This keeps you clear of flying debris. (Manual p.85)"],
+  ["If your car has anti-lock brakes (ABS), in an emergency stop you should:", ["Press down firmly on the brake and keep steering","Pump the brakes rapidly","Use only the parking brake","Shift into neutral"], 0, "Don't pump ABS brakes. (Manual p.83)"],
+  ["Your steering suddenly stops working. You should:", ["Ease off the gas; brake gently only if needed to avoid a crash","Brake hard","Shift into park","Accelerate"], 0, "Sudden braking can throw the vehicle off balance. (Manual p.84)"],
+  ["A vehicle is coming toward you in your lane. You should:", ["Move to the right — off the road if necessary","Swerve into the left lane","Stop in your lane","Speed up"], 0, "Never go left; the other driver may swerve back. (Manual p.84)"],
+  ["Your engine starts to overheat. The first thing to try is:", ["Turn off the air conditioning and other unneeded equipment","Open the radiator cap","Speed up to cool it","Turn the A/C to max"], 0, "Then try the heater; if it keeps rising, pull over and shut it off. (Manual p.85)"],
+  ["Smoke is coming from under your hood. You should:", ["Pull off, turn off the ignition and get out — don't use water","Pour water on the engine","Keep driving to a repair shop","Open the hood right away"], 0, "Water can spread the fire. (Manual p.85)"],
+  ["Early signs of carbon monoxide poisoning include:", ["Sudden tiredness, headache, dizziness and nausea","Sneezing and itchy eyes","Hunger","Feeling more alert"], 0, "CO has no odor or color. Open windows, shut off the engine, get out. (Manual p.86)"],
+  ["The time it takes to go from seeing a danger to pressing the brake is about:", ["3/4 of a second","1/10 of a second","3 seconds","5 seconds"], 0, "(Manual p.73)"],
+  ["In poor road conditions, increase your following distance to at least:", ["4 to 5 seconds","2 seconds","3 seconds","One car length"], 0, "The 3-second rule is for ideal conditions only. (Manual p.73)"]
+ ],
+ "Road Signs (with pictures)": [
+  ["This sign means:", ["Come to a complete stop, then yield before going","Slow down and go if clear","Stop only if cars are coming","Stop only at night"], 0, "Stay stopped until vehicles and pedestrians with the right-of-way have cleared. (Manual p.57)", "stop"],
+  ["This sign means:", ["Slow down, stop if needed, and give the right-of-way","Stop completely every time","Merge without looking","Road ends"], 0, "(Manual p.57)", "yield"],
+  ["If this sign faces you:", ["Do not enter that road or ramp","Enter slowly","Traffic flows your way","Parking only"], 0, "(Manual p.57)", "dne"],
+  ["If you see this sign, you are:", ["Driving the wrong direction — into oncoming traffic","Near a road closure","Supposed to take the next exit","Entering a detour"], 0, "(Manual p.57)", "wrongway"],
+  ["This sign means:", ["No left turn","Left turns on green only","Left lane ends","Left turn only"], 0, "A red circle with a slash means the action is not allowed. (Manual p.57)", "noleft"],
+  ["This sign means:", ["U-turns are not allowed","U-turn lane ahead","The road curves sharply","Two-way traffic"], 0, "(Manual p.57)", "nouturn"],
+  ["The number on this sign is:", ["The maximum speed allowed in ideal conditions","The recommended speed","The minimum speed","The speed for trucks only"], 0, "Slow down below it when conditions require. (Manual p.57)", "speed"],
+  ["This sign marks:", ["The beginning of a no-passing zone","The end of a no-passing zone","A passing lane","A truck route"], 0, "(Manual p.57)", "donotpass"],
+  ["This sign means:", ["Traffic flows only in the direction of the arrow","Turn in the arrow's direction only","Detour","Dead end"], 0, "(Manual p.58)", "oneway"],
+  ["This sign means:", ["Stay to the right of the island, median or obstruction ahead","Right lane ends","Right turn only","Keep right except to pass"], 0, "(Manual p.58)", "keepright"],
+  ["This sign means the center lane may be used:", ["Only for left turns, by traffic from either direction","For passing","As a merge lane","For parking"], 0, "(Manual p.58)", "centerleft"],
+  ["A lane with this sign is:", ["Reserved for specific uses such as carpools, buses or bicycles","Ending","Closed for construction","A school zone"], 0, "(Manual p.59)", "diamond"],
+  ["This pennant-shaped sign is posted on the ____ side of the road and marks:", ["Left; the beginning of a no-passing zone","Right; a passing lane","Left; the end of a no-passing zone","Right; a narrow bridge"], 0, "(Manual p.60)", "nopassing"],
+  ["This sign means:", ["A school or school crosswalk is ahead; watch for children and be ready to stop","Playground only","Pedestrians only","Park entrance"], 0, "Five-sided = school. (Manual p.60)", "school"],
+  ["This sign marks:", ["A railroad crossing","A dangerous intersection","A no-parking zone","A crossroad"], 0, "If there is more than one track, a sign below shows how many. (Manual p.59)", "crossbuck"],
+  ["This sign means:", ["Railroad crossing ahead: slow down, look both ways, be ready to stop","The railroad crossing is closed","Two roads cross","Rest area"], 0, "(Manual p.60)", "rr"],
+  ["When you see this sign, you should:", ["Slow down, be ready to stop, and yield to pedestrians crossing","Honk to warn pedestrians","Speed up through the area","Stop every time"], 0, "(Manual p.60)", "ped"],
+  ["This emblem on the back of a vehicle means it travels at:", ["30 mph or less","45 mph or less","20 mph or less","It carries hazardous materials"], 0, "Slow-moving vehicle emblem, e.g. farm equipment. (Manual p.61)", "smv"],
+  ["This sign warns of:", ["A crossroad (intersection) ahead","A hospital","A railroad crossing","A church"], 0, "(Manual p.61)", "cross"],
+  ["This sign means:", ["The road curves right; slow down","Right turn required","Keep right","Merge right"], 0, "(Manual p.61)", "curve"],
+  ["This sign means:", ["The road is slippery when wet","Winding road","Crash ahead","No passing"], 0, "Often near bridges and overpasses. (Manual p.63)", "slippery"],
+  ["This sign means:", ["The right lane ends; right-lane traffic must merge and yield","Added lane","Divided highway ends","Narrow bridge"], 0, "(Manual p.63)", "laneends"],
+  ["This sign means:", ["Flagger ahead; drive carefully and obey the flagger","Parade route","Detour","Railroad worker"], 0, "Orange = work zone. (Manual p.64)", "flagger"]
+ ]
+};
+
+
+const K = 'stroke="#000" stroke-width="3"';
+const DIA = (fill, inner) => `<polygon points="60,4 116,60 60,116 4,60" fill="${fill}" ${K}/>${inner}`;
+const BAN = inner => `<rect x="6" y="6" width="108" height="108" rx="6" fill="#fff" ${K}/>${inner}<circle cx="60" cy="60" r="44" fill="none" stroke="#d00" stroke-width="9"/><line x1="29" y1="29" x2="91" y2="91" stroke="#d00" stroke-width="9"/>`;
+const T = (x, y, s, t, fill = '#000') => `<text x="${x}" y="${y}" font-size="${s}" font-weight="700" font-family="Arial,sans-serif" text-anchor="middle" fill="${fill}">${t}</text>`;
+const SIGNS = {
+  stop: `<polygon points="35,4 85,4 116,35 116,85 85,116 35,116 4,85 4,35" fill="#c8102e" stroke="#fff" stroke-width="4"/>${T(60,72,30,'STOP','#fff')}`,
+  yield: `<polygon points="4,10 116,10 60,112" fill="#c8102e"/><polygon points="26,23 94,23 60,84" fill="#fff"/>${T(60,44,15,'YIELD','#c8102e')}`,
+  dne: `<circle cx="60" cy="60" r="55" fill="#c8102e"/><rect x="18" y="52" width="84" height="16" fill="#fff"/>${T(60,42,15,'DO NOT','#fff')}${T(60,91,15,'ENTER','#fff')}`,
+  wrongway: `<rect x="4" y="22" width="112" height="76" fill="#c8102e"/>${T(60,55,22,'WRONG','#fff')}${T(60,85,22,'WAY','#fff')}`,
+  noleft: BAN(`<path d="M72,95 V58 H40" fill="none" stroke="#000" stroke-width="9"/><polygon points="26,58 44,44 44,72" fill="#000"/>`),
+  nouturn: BAN(`<path d="M72,95 V50 a14,14 0 0 0 -28,0 V78" fill="none" stroke="#000" stroke-width="9"/><polygon points="44,92 31,74 57,74" fill="#000"/>`),
+  speed: `<rect x="18" y="4" width="84" height="112" rx="6" fill="#fff" ${K}/>${T(60,32,16,'SPEED')}${T(60,52,16,'LIMIT')}${T(60,100,44,'30')}`,
+  donotpass: `<rect x="18" y="4" width="84" height="112" rx="6" fill="#fff" ${K}/>${T(60,40,22,'DO')}${T(60,68,22,'NOT')}${T(60,96,22,'PASS')}`,
+  oneway: `<rect x="2" y="34" width="116" height="52" fill="#000"/><rect x="5" y="37" width="110" height="46" fill="#fff"/><polygon points="12,50 88,50 88,42 110,60 88,78 88,70 12,70" fill="#000"/>${T(50,66,13,'ONE WAY','#fff')}`,
+  keepright: `<rect x="18" y="4" width="84" height="112" rx="6" fill="#fff" ${K}/><ellipse cx="50" cy="86" rx="12" ry="20" fill="#000"/><path d="M42,14 V36 L74,64 V88" fill="none" stroke="#000" stroke-width="8"/><polygon points="74,106 62,86 86,86" fill="#000"/>`,
+  centerleft: `<rect x="10" y="4" width="100" height="112" rx="6" fill="#fff" ${K}/><path d="M44,86 V40 H30" fill="none" stroke="#000" stroke-width="7"/><polygon points="20,40 32,30 32,50" fill="#000"/><path d="M76,30 V76 H90" fill="none" stroke="#000" stroke-width="7"/><polygon points="100,76 88,66 88,86" fill="#000"/>${T(60,108,15,'ONLY')}`,
+  diamond: `<rect x="18" y="4" width="84" height="112" rx="6" fill="#fff" ${K}/><polygon points="60,22 88,60 60,98 32,60" fill="none" stroke="#000" stroke-width="7"/>`,
+  nopassing: `<polygon points="4,14 4,106 116,60" fill="#f7c600" ${K}/>${T(38,56,12,'NO')}${T(38,70,12,'PASSING')}${T(38,84,12,'ZONE')}`,
+  school: `<polygon points="60,4 114,48 114,116 6,116 6,48" fill="#c6e21a" ${K}/><g fill="#000"><circle cx="45" cy="52" r="7"/><circle cx="76" cy="58" r="6"/></g><g stroke="#000" stroke-width="6" stroke-linecap="round"><path d="M45,60 V84 M45,84 L37,104 M45,84 L53,104 M45,66 L33,76 M45,66 L60,72"/><path d="M76,65 V86 M76,86 L69,104 M76,86 L83,104 M76,70 L65,78 M76,70 L88,78"/></g>`,
+  crossbuck: `<g transform="rotate(35 60 60)"><rect x="-2" y="48" width="124" height="24" fill="#fff" ${K}/></g><g transform="rotate(-35 60 60)"><rect x="-2" y="48" width="124" height="24" fill="#fff" ${K}/></g><g transform="rotate(35 60 60)">${T(28,66,13,'RAIL')}${T(94,66,13,'ROAD')}</g><g transform="rotate(-35 60 60)">${T(26,66,12,'CROSS')}${T(95,66,12,'ING')}</g>`,
+  rr: `<circle cx="60" cy="60" r="55" fill="#f7c600" ${K}/><path d="M24,24 L96,96 M96,24 L24,96" stroke="#000" stroke-width="7"/>${T(30,70,22,'R')}${T(90,70,22,'R')}`,
+  ped: DIA('#f7c600', `<circle cx="62" cy="30" r="7"/><g stroke="#000" stroke-width="7" stroke-linecap="round" fill="none"><path d="M60,40 L56,66 L44,90 M56,66 L70,90 M58,48 L44,60 M58,48 L74,58"/></g>`),
+  smv: `<polygon points="60,6 114,108 6,108" fill="#c8102e"/><polygon points="60,30 96,98 24,98" fill="#ff7f00"/>`,
+  cross: DIA('#f7c600', `<path d="M60,22 V98 M24,60 H96" stroke="#000" stroke-width="10"/>`),
+  curve: DIA('#f7c600', `<path d="M48,92 V66 Q48,44 66,40" fill="none" stroke="#000" stroke-width="9"/><polygon points="80,38 62,28 64,52" fill="#000"/>`),
+  slippery: DIA('#f7c600', `<rect x="44" y="30" width="32" height="26" rx="6"/><g fill="none" stroke="#000" stroke-width="4"><path d="M46,62 q-8,8 0,16 q8,8 0,16"/><path d="M74,62 q-8,8 0,16 q8,8 0,16"/></g>`),
+  laneends: DIA('#f7c600', `<path d="M48,98 V22 M76,98 V72 L56,40 V22" fill="none" stroke="#000" stroke-width="7"/>`),
+  flagger: DIA('#ff7f00', `<circle cx="54" cy="30" r="7"/><g stroke="#000" stroke-width="7" stroke-linecap="round" fill="none"><path d="M54,40 V70 L46,94 M54,70 L62,94 M54,48 L74,40 L80,28"/></g><polygon points="80,22 96,26 82,36" fill="#000"/>`)
+};
+const signSvg = k => `<svg viewBox="0 0 120 120" width="150" height="150" role="img" aria-label="road sign">${SIGNS[k]}</svg>`;
+const LEN = 40, passMark = n => Math.ceil(n * 0.8);
+const app = document.getElementById('app');
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S;
+
+function home() {
+  const names = Object.keys(TESTS);
+  app.innerHTML = `
+    <h1>Minnesota Class D Practice Test</h1>
+    <p class="muted">Checked against the official <a href="https://assets.dps.mn.gov/files/dvs/dvs-class-d-drivers-manual-english.pdf" target="_blank" rel="noopener">Minnesota Driver's Manual (June 2026)</a>.
+    The real test has multiple-choice and true/false questions on traffic laws and road signs, and you need <b>80%</b> to pass.
+    The state doesn't publish how many questions there are; unofficial sources say about 40 (32 correct), in one mixed test that includes road-sign pictures. Use <b>Full-Length Mix</b> to practice at that length.
+    Also try the state's own <a href="https://assets.dps.mn.gov/files/dvs/dvs-class-d-practice-test.pdf" target="_blank" rel="noopener">DPS practice test</a>.</p>
+    <div class="card">
+      ${names.map((n, i) => `<button class="pick" data-t="${i}"><b>${esc(n)}</b><br><span class="muted">${TESTS[n].length} questions</span></button>`).join('')}
+      <button class="pick" data-t="mix"><b>Full-Length Mix</b><br><span class="muted">40 random questions from all tests — like the real thing</span></button>
+    </div>`;
+  app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
+    const t = b.dataset.t;
+    const qs = t === 'mix' ? shuffle(names.flatMap(n => TESTS[n])).slice(0, LEN) : names[t].startsWith('Official') ? TESTS[names[t]].slice() : shuffle(TESTS[names[t]]);
+    start(t === 'mix' ? 'Full-Length Mix' : names[t], qs);
+  });
+}
+
+function start(name, qs) { S = { name, qs, i: 0, right: 0, missed: [], fixed: name.startsWith('Official') }; ask(); window.scrollTo(0, 0); }
+
+function ask() {
+  const [q, choices, ans, why, sign] = S.qs[S.i];
+  const order = (choices.length === 2 || S.fixed) ? choices.map((c, k) => k) : shuffle(choices.map((c, k) => k));
+  app.innerHTML = `
+    <p class="muted">${esc(S.name)} · Question ${S.i + 1} of ${S.qs.length} · ${S.right} correct</p>
+    <div class="bar"><div style="width:${100 * S.i / S.qs.length}%"></div></div>
+    <div class="card">
+      ${sign ? `<div style="text-align:center">${signSvg(sign)}</div>` : ''}
+      <p><b>${esc(q)}</b></p>
+      ${order.map(k => `<button class="pick" data-k="${k}">${esc(choices[k])}</button>`).join('')}
+      <div id="fb"></div>
+    </div>
+    <button class="pick" id="quit" style="width:auto">Quit to menu</button>`;
+  document.getElementById('quit').onclick = home;
+  app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    const k = +b.dataset.k, ok = k === ans;
+    app.querySelectorAll('[data-k]').forEach(x => {
+      x.disabled = true;
+      if (+x.dataset.k === ans) x.classList.add('ok');
+    });
+    if (ok) S.right++; else { b.classList.add('bad'); S.missed.push([q, choices[k], choices[ans], why, sign]); }
+    const last = S.i === S.qs.length - 1;
+    document.getElementById('fb').innerHTML = `
+      <div class="explain"><b class="${ok ? 'pass' : 'fail'}">${ok ? 'Correct!' : 'Not quite.'}</b> ${esc(why)}</div>
+      <p><button class="primary" id="next">${last ? 'See my score' : 'Next question'}</button></p>`;
+    const n = document.getElementById('next');
+    n.onclick = () => { if (last) done(); else { S.i++; ask(); } };
+    n.focus();
+  });
+}
+
+function done() {
+  const PASS = passMark(S.qs.length), passed = S.right >= PASS;
+  app.innerHTML = `
+    <h1>${esc(S.name)}</h1>
+    <div class="card" style="text-align:center">
+      <div class="big ${passed ? 'pass' : 'fail'}">${S.right} / ${S.qs.length}</div>
+      <p><b class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'NOT YET'}</b> — need ${PASS} to pass.</p>
+      <div class="row">
+        <button class="primary" id="again">Retake this test</button>
+        <button class="pick" id="menu" style="text-align:center">Pick another test</button>
+      </div>
+    </div>
+    ${S.missed.length ? `<div class="card"><h2 style="font-size:1.1rem;margin-top:0">Review what you missed</h2>
+      ${S.missed.map(([q, you, right, why, sign]) => `<div class="miss">${sign ? `<div>${signSvg(sign).replace(/150/g, '80')}</div>` : ''}<b>${esc(q)}</b><br>
+        <span class="fail">Your answer: ${esc(you)}</span><br>
+        <span class="pass">Correct: ${esc(right)}</span><br><span class="muted">${esc(why)}</span></div>`).join('')}</div>` : ''}`;
+  const qs = S.qs, name = S.name;
+  document.getElementById('again').onclick = () => start(name, shuffle(qs));
+  document.getElementById('menu').onclick = home;
+  window.scrollTo(0, 0);
+}
+
+home();
+</script>
+</body>
+</html>
