@@ -1,7 +1,7 @@
 // Public host forwarder (tools.myinthermo.com). The tools live on the shop server,
 // reachable only on Tailscale. Show a "shop tools" button + 20 s countdown to the
-// public website. A background probe forwards immediately where the browser allows it
-// (Chrome's Local Network Access blocks public→100.x fetches, so the button is the main path).
+// public website. No reachability probe: Chrome's Local Network Access prompts
+// ("access other devices on this network") on any public→100.x fetch.
 (function () {
   var TAILNET = 'https://inthermopc.tail881969.ts.net';
   var PUBLIC = 'https://myinthermo.com/';
@@ -19,8 +19,4 @@
       if (left <= 0) { clearInterval(t); go(PUBLIC); }
     }, 1000);
   });
-  try {
-    fetch(TAILNET + '/healthz', { mode: 'no-cors', cache: 'no-store' })
-      .then(function () { go(target); }).catch(function () {});
-  } catch (e) {}
 })();
