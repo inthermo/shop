@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSAT Upper Level Prep</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#d9dde3;
+          --accent:#1f5fbf; --ok:#1e8e3e; --okbg:#e6f4ea; --bad:#c5221f; --badbg:#fce8e6; --warn:#b06000; --sel:#e8f0fe; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1e232b; --ink:#e8eaed; --muted:#9aa3b0; --line:#343b46;
+            --accent:#6ea4ff; --ok:#6fcf8a; --okbg:#1c3325; --bad:#ff8a80; --badbg:#3a1f1e; --warn:#f0b35a; --sel:#223252; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  main.wide { max-width:1200px; }
+  h1 { font-size:1.4rem; margin:.3em 0; } h2 { font-size:1.1rem; margin:.2em 0 .5em; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin:14px 0; }
+  .muted { color:var(--muted); font-size:.92rem; }
+  button { font:inherit; cursor:pointer; border-radius:10px; color:var(--ink); }
+  .pick { display:flex; gap:10px; width:100%; text-align:left; padding:12px 14px; margin:7px 0;
+          background:var(--card); border:1px solid var(--line); }
+  .pick b { min-width:1.4em; }
+  .pick:hover:not(:disabled) { border-color:var(--accent); }
+  .pick.sel { background:var(--sel); border-color:var(--accent); }
+  .pick.ok { background:var(--okbg); border-color:var(--ok); }
+  .pick.bad { background:var(--badbg); border-color:var(--bad); }
+  .pick:disabled { cursor:default; }
+  .primary { background:var(--accent); color:#fff; border:0; padding:11px 18px; font-weight:600; }
+  .ghost { background:transparent; border:1px solid var(--line); padding:9px 14px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .sets { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .set { text-align:left; padding:10px 12px; background:var(--card); border:1px solid var(--line); }
+  .set:hover { border-color:var(--accent); }
+  .set small { display:block; color:var(--muted); }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--accent); }
+  .explain { margin-top:10px; padding:12px; border-radius:8px; background:var(--bg); }
+  .big { font-size:2.2rem; font-weight:700; }
+  .top { position:sticky; top:0; background:var(--bg); padding:8px 0; z-index:2; }
+  .timer { font-variant-numeric:tabular-nums; font-weight:700; }
+  .timer.low { color:var(--bad); }
+  .map { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  .map button { width:30px; height:30px; padding:0; font-size:.8rem; background:var(--card); border:1px solid var(--line); }
+  .map button.done { background:var(--sel); border-color:var(--accent); }
+  .map button.cur { outline:2px solid var(--accent); }
+  .split { display:grid; gap:14px; }
+  @media (min-width:900px) { .split.has-passage { grid-template-columns:1fr 1fr; }
+    .passage { position:sticky; top:70px; max-height:calc(100vh - 90px); overflow:auto; } }
+  .passage ol { margin:0; padding-left:2.6em; font-family:Georgia,"Times New Roman",serif; font-size:15px; line-height:1.55; }
+  .passage li::marker { color:var(--muted); font-size:.75rem; }
+  .passage li.gap { list-style:none; height:.6em; }
+  .stem { font-size:1.05rem; margin-bottom:6px; }
+  .syn { font-weight:700; letter-spacing:.02em; }
+  table.t { border-collapse:collapse; width:100%; } table.t td, table.t th { border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; }
+  .stem table { border-collapse:collapse; margin:6px 0; } .stem td, .stem th { border:1px solid var(--line); padding:3px 8px; }
+  .good { color:var(--ok); } .poor { color:var(--bad); } .mid { color:var(--warn); }
+  .day { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .day:last-child { border-bottom:0; }
+  .day input { margin-top:5px; width:18px; height:18px; }
+  .day.done > div { opacity:.55; }
+  details summary { cursor:pointer; font-weight:600; }
+  .tag { display:inline-block; font-size:.75rem; padding:1px 7px; border-radius:9px; background:var(--bg); color:var(--muted); }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+<script>
+// ---- data registry: each data/*.js calls SSAT.add({...}) ----
+const SSAT = { sets: {}, add(s) { this.sets[s.id] = s; } };
+const FILES = ['S1','W1','V1','V2','V3','V4','V5','V6','M1','M2','M3','M4','M5','M6','R1','R2','R3','R4','R5','R6'];
+const SECTIONS = [
+  ['strategy','Strategy & guessing (do first)'], ['verbal','Verbal — synonyms & analogies (30 Q / 15 min)'],
+  ['math','Math — no calculator (12 Q / 15 min)'], ['reading','Reading (3 passages, 15 Q / 15 min)'] ];
+
+const PLAN = [
+  ['Diagnostic', 'Strategy & Guessing (practice mode) → Verbal 1 → Math 1 → Reading 1, all in <b>test mode</b>. Note the weakest section.'],
+  ['Roots + weak spot', 'Word Roots (practice mode). Verbal 2, Math 2. Then “Review my misses”.'],
+  ['Reading + math', 'Reading 2, Math 3, Verbal 3. Review misses.'],
+  ['Full official test #1', 'Official practice test from the <i>Official Guide to the Upper Level SSAT</i> or ssat.org online practice — full length, timed, including the 25-min writing sample. Real breaks only.'],
+  ['Fix what #1 exposed', 'Go through every miss from the official test. Then Reading 3 and Verbal 4.'],
+  ['Harder sets', 'Math 4, Reading 4, Verbal 5. Review misses.'],
+  ['Full official test #2', 'Second official full-length test, same conditions. Compare section scores to #1.'],
+  ['Targeted review', 'Review test #2 misses. Math 5, Reading 5, Verbal 6. Word Roots again.'],
+  ['Light day', 'Math 6 + Reading 6 in <b>practice mode</b>. Write one practice essay (25 min): pick the personal or the general prompt. Review misses one last time.'],
+  ['Day before', 'No new material. 15 min of Word Roots max. Pack: admission ticket, photo ID if required, #2 pencils, eraser, watch without alarm, water, snack. Bed early.'],
+];
+
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('ssat.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('ssat.' + k, JSON.stringify(v)); } catch {} },
+};
+const $ = s => document.querySelector(s);
+const L = 'ABCDE';
+const esc = s => String(s).replace(/&(?![#a-zA-Z0-9]+;)/g, '&amp;');
+let S = null, tick = null;
+
+// Flatten a set into questions; reading items carry a passage index.
+function flatten(set) {
+  if (set.section !== 'reading') return set.items.map((q, i) => ({ ...q, key: set.id + ':' + i }));
+  const out = [];
+  set.passages.forEach((p, pi) => p.items.forEach((q, i) => out.push({ ...q, pi, key: set.id + ':' + pi + ':' + i })));
+  return out;
+}
+function findQ(key) {
+  const set = SSAT.sets[key.split(':')[0]]; if (!set) return null;
+  const q = flatten(set).find(x => x.key === key); return q && { set, q };
+}
+
+function home() {
+  clearInterval(tick); S = null; $('#app').className = '';
+  const best = LS.get('best', {}), plan = LS.get('plan', []), misses = LS.get('misses', []);
+  const testDate = LS.get('testDate', '');
+  let days = '';
+  if (testDate) { const d = Math.ceil((new Date(testDate + 'T08:00') - new Date()) / 864e5); days = d >= 0 ? `<b>${d}</b> day${d === 1 ? '' : 's'} to go` : 'Test date passed'; }
+  let h = `<h1>SSAT Upper Level Prep</h1>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>10-day plan</h2>
+    <span class="muted">Test date <input type="date" id="td" value="${testDate}"> ${days}</span></div>
+    ${PLAN.map(([t, d], i) => `<label class="day ${plan[i] ? 'done' : ''}"><input type="checkbox" data-d="${i}" ${plan[i] ? 'checked' : ''}>
+      <div><b>Day ${i + 1} — ${t}</b><br><span class="muted">${d}</span></div></label>`).join('')}
+  </div>
+  <div class="card"><h2>Rules that earn points</h2>
+    <ul style="margin:0;padding-left:1.2em">
+      <li><b>Scoring:</b> +1 right, −¼ wrong, 0 skipped. Guess only after you've eliminated 2 or more choices.</li>
+      <li><b>Analogies:</b> make a bridge sentence first (“A scalpel is a tool a surgeon uses”), then test every choice with it. Keep the word order the same.</li>
+      <li><b>Synonyms:</b> unknown word? Break it into roots (bene = good, mal = bad, loqu = speak). Watch for opposites; they're common traps.</li>
+      <li><b>Reading:</b> the answer is in the passage. Go back and prove it. Cross out choices that are too broad, too extreme (“always/never”), or true but not stated.</li>
+      <li><b>Pace:</b> verbal ≈ 30 s, reading ≈ 1 min, math ≈ 70 s per question. Don't get stuck. Circle it, move on, and come back.</li>
+    </ul></div>
+  <div class="card"><div class="row"><b>Mode:</b>
+    <label><input type="radio" name="mode" value="test" ${LS.get('mode', 'test') === 'test' ? 'checked' : ''}> Test (timed, results at end)</label>
+    <label><input type="radio" name="mode" value="practice" ${LS.get('mode', 'test') === 'practice' ? 'checked' : ''}> Practice (untimed, instant feedback)</label></div></div>`;
+  for (const [sec, title] of SECTIONS) {
+    const sets = FILES.map(f => SSAT.sets[f]).filter(s => s && s.section === sec);
+    if (!sets.length) continue;
+    h += `<div class="card"><h2>${title}</h2><div class="sets">` + sets.map(s => {
+      const b = best[s.id];
+      const n = flatten(s).length;
+      return `<button class="set" data-s="${s.id}"><b>${s.title}</b><small>${n} Q · ${s.minutes} min${b ? ` · best ${b.pct}%` : ''}</small></button>`;
+    }).join('') + '</div></div>';
+  }
+  h += `<div class="card"><h2>Review my misses</h2><p class="muted">${misses.length} question${misses.length === 1 ? '' : 's'} missed or skipped. A question leaves this list once you get it right.</p>
+    <div class="row"><button class="primary" id="rev" ${misses.length ? '' : 'disabled'}>Review ${Math.min(misses.length, 20)} misses</button>
+    <button class="ghost" id="hist">Score history</button></div></div>
+    <p class="muted">Practice only. These are original questions written in the style of the real SSAT. Official practice tests are the benchmark. Progress is saved on this device only.</p>`;
+  $('#app').innerHTML = h;
+  $('#td').onchange = e => { LS.set('testDate', e.target.value); home(); };
+  document.querySelectorAll('[data-d]').forEach(c => c.onchange = () => { const p = LS.get('plan', []); p[c.dataset.d] = c.checked; LS.set('plan', p); home(); });
+  document.querySelectorAll('[name=mode]').forEach(r => r.onchange = () => LS.set('mode', r.value));
+  document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => start(SSAT.sets[b.dataset.s]));
+  $('#rev').onclick = review; $('#hist').onclick = history;
+}
+
+function start(set) {
+  const mode = LS.get('mode', 'test');
+  S = { set, title: set.title, qs: flatten(set), ans: {}, i: 0, mode, left: set.minutes * 60, t0: Date.now(), checked: {} };
+  if (mode === 'test') tick = setInterval(() => { S.left--; const t = $('#tm'); if (t) paintTimer(t); if (S.left <= 0) finish(); }, 1000);
+  ask(); scrollTo(0, 0);
+}
+function review() {
+  const keys = LS.get('misses', []).slice(0, 20), qs = keys.map(findQ).filter(Boolean);
+  const set = { id: 'REVIEW', title: 'Review my misses', minutes: Math.max(5, Math.round(qs.length * 0.9)), section: 'review' };
+  S = { set, title: set.title, qs: qs.map(x => ({ ...x.q, passage: x.set.passages && x.set.passages[x.q.pi] })), ans: {}, i: 0, mode: 'practice', left: 0, t0: Date.now(), checked: {} };
+  ask(); scrollTo(0, 0);
+}
+function paintTimer(t) { const m = Math.max(0, S.left); t.textContent = Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); t.className = 'timer' + (m <= 120 ? ' low' : ''); }
+
+function passageFor(q) { return q.passage || (S.set.passages && S.set.passages[q.pi]); }
+function renderPassage(p) {
+  let n = 0;
+  return `<div class="card passage"><div class="muted" style="margin-bottom:6px">${p.title ? esc(p.title) + ' · ' : ''}${p.genre}</div><ol>` +
+    p.lines.map(l => l === '' ? '<li class="gap"></li>' : `<li value="${++n}">${esc(l)}</li>`).join('') + '</ol></div>';
+}
+function stemHTML(q) {
+  if (q.kind === 'syn') return `<span class="syn">${q.stem}</span>:`;
+  if (q.kind === 'ana') return `${q.stem}`;
+  return q.stem;
+}
+
+function ask() {
+  const q = S.qs[S.i], n = S.qs.length, p = q.pi !== undefined || q.passage ? passageFor(q) : null;
+  const practice = S.mode === 'practice', chosen = S.ans[S.i], checked = S.checked[S.i];
+  $('#app').className = p ? 'wide' : '';
+  const done = Object.keys(S.ans).length;
+  let h = `<div class="top"><div class="row" style="justify-content:space-between">
+      <b>${S.title}</b><span>Q ${S.i + 1} / ${n}</span>
+      ${practice ? '<span class="muted">Practice</span>' : '<span class="timer" id="tm"></span>'}
+      <button class="ghost" id="quit">${practice ? 'Finish' : 'Submit'}</button></div>
+      <div class="bar" style="margin-top:6px"><div style="width:${done / n * 100}%"></div></div></div>
+    <div class="split ${p ? 'has-passage' : ''}">${p ? renderPassage(p) : ''}<div>
+    <div class="card"><div class="stem">${stemHTML(q)}</div>
+    ${q.choices.map((c, k) => {
+      let cls = chosen === k ? 'sel' : '';
+      if (practice && checked) cls = k === q.answer ? 'ok' : (chosen === k ? 'bad' : '');
+      return `<button class="pick ${cls}" data-k="${k}" ${practice && checked ? 'disabled' : ''}><b>${L[k]}</b><span>${c}</span></button>`;
+    }).join('')}
+    ${practice && checked ? `<div class="explain"><b>${chosen === q.answer ? '✅ Correct' : chosen === undefined ? '⏭ Skipped' : '❌ Answer: ' + L[q.answer]}</b> — ${q.explain}</div>` : ''}
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="prev" ${S.i ? '' : 'disabled'}>← Back</button>
+      ${practice && !checked ? `<button class="primary" id="check">${chosen === undefined ? 'Skip' : 'Check'}</button>` : ''}
+      ${!practice && chosen !== undefined ? '<button class="ghost" id="clear">Erase answer</button>' : ''}
+      <button class="${practice && !checked ? 'ghost' : 'primary'}" id="next">${S.i === n - 1 ? 'Finish' : 'Next →'}</button>
+    </div></div>
+    ${practice ? '' : `<div class="card"><span class="muted">Jump to a question. Blue = answered. A blank question is scored as 0.</span><div class="map">${S.qs.map((_, k) =>
+      `<button data-j="${k}" class="${S.ans[k] !== undefined ? 'done' : ''} ${k === S.i ? 'cur' : ''}">${k + 1}</button>`).join('')}</div></div>`}
+    </div></div>`;
+  $('#app').innerHTML = h;
+  if (!practice) paintTimer($('#tm'));
+  document.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { S.ans[S.i] = +b.dataset.k; ask(); });
+  document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { S.i = +b.dataset.j; ask(); });
+  $('#prev').onclick = () => { S.i--; ask(); };
+  $('#next').onclick = () => { if (S.i === n - 1) finish(); else { S.i++; ask(); if (!p) scrollTo(0, 0); } };
+  if ($('#check')) $('#check').onclick = () => { S.checked[S.i] = true; ask(); };
+  if ($('#clear')) $('#clear').onclick = () => { delete S.ans[S.i]; ask(); };
+  $('#quit').onclick = () => { if (practice || confirm('Submit now? Unanswered questions count as skipped.')) finish(); };
+}
+
+function finish() {
+  clearInterval(tick);
+  const qs = S.qs, n = qs.length;
+  let right = 0, wrong = 0, skip = 0; const tags = {}, rows = [];
+  let misses = LS.get('misses', []);
+  qs.forEach((q, k) => {
+    const a = S.ans[k], ok = a === q.answer, t = q.tag || q.kind;
+    tags[t] = tags[t] || [0, 0]; tags[t][1]++;
+    if (a === undefined) skip++; else if (ok) { right++; tags[t][0]++; } else wrong++;
+    if (ok) misses = misses.filter(m => m !== q.key);
+    else { if (!misses.includes(q.key)) misses.push(q.key); rows.push({ q, a }); }
+  });
+  LS.set('misses', misses);
+  const raw = right - wrong / 4, pct = Math.round(right / n * 100);
+  const used = Math.round((Date.now() - S.t0) / 1000);
+  if (S.set.id !== 'REVIEW') {
+    const best = LS.get('best', {}); if (!best[S.set.id] || pct > best[S.set.id].pct) best[S.set.id] = { pct }; LS.set('best', best);
+    const hist = LS.get('hist', []); hist.push({ id: S.set.id, title: S.title, date: new Date().toISOString().slice(0, 10), right, wrong, skip, n, raw, used, mode: S.mode }); LS.set('hist', hist);
+  }
+  const cls = pct >= 80 ? 'good' : pct >= 60 ? 'mid' : 'poor';
+  const guessCost = wrong / 4;
+  let h = `<h1>${S.title} — results</h1><div class="card">
+    <div class="big ${cls}">${right} / ${n}</div>
+    <div>Raw score (SSAT rules): <b>${raw.toFixed(2)}</b> · ${right} right, ${wrong} wrong (−${guessCost.toFixed(2)}), ${skip} skipped · time ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')}</div>
+    ${wrong >= 4 && wrong > right / 3 ? `<p class="muted">⚠️ ${wrong} wrong answers cost ${guessCost.toFixed(2)} points. Guess only after you've eliminated 2 choices.</p>` : ''}
+    ${skip > n / 3 ? '<p class="muted">⚠️ Lots of skips. If you can rule out 2 choices, guessing pays off on average.</p>' : ''}
+    </div><div class="card"><h2>By topic</h2><table class="t">` +
+    Object.entries(tags).sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).map(([t, [r, c]]) => {
+      const x = Math.round(r / c * 100);
+      return `<tr><td>${t}</td><td>${r}/${c}</td><td class="${x >= 80 ? 'good' : x >= 60 ? 'mid' : 'poor'}">${x}%</td></tr>`;
+    }).join('') + `</table></div>`;
+  if (rows.length) h += `<div class="card"><h2>Missed & skipped (${rows.length})</h2>` + rows.map(({ q, a }) => {
+    const p = passageFor(q);
+    return `<details style="padding:8px 0;border-bottom:1px solid var(--line)"><summary><span class="tag">${q.tag || ''}</span> ${stemHTML(q).replace(/<[^>]+>/g, '').slice(0, 90)}</summary>
+      ${p ? `<p class="muted">Passage: ${p.title || p.genre}, starting “${esc(p.lines[0]).slice(0, 60)}…”</p>` : ''}
+      <div class="stem">${stemHTML(q)}</div>
+      ${q.choices.map((c, k) => `<div class="pick ${k === q.answer ? 'ok' : k === a ? 'bad' : ''}"><b>${L[k]}</b><span>${c}</span></div>`).join('')}
+      <div class="explain">${a === undefined ? 'Skipped. ' : ''}${q.explain}</div></details>`;
+  }).join('') + '</div>';
+  h += `<div class="row"><button class="primary" id="home">Back to all quizzes</button>${S.set.id !== 'REVIEW' ? '<button class="ghost" id="again">Retake</button>' : ''}</div>`;
+  $('#app').className = ''; $('#app').innerHTML = h; scrollTo(0, 0);
+  const set = S.set; $('#home').onclick = home; if ($('#again')) $('#again').onclick = () => start(set);
+}
+
+function history() {
+  const hist = LS.get('hist', []).slice().reverse();
+  $('#app').innerHTML = `<h1>Score history</h1><div class="card"><table class="t"><tr><th>Date</th><th>Quiz</th><th>Right</th><th>Raw</th><th>Time</th><th>Mode</th></tr>` +
+    (hist.map(r => `<tr><td>${r.date}</td><td>${r.title}</td><td>${r.right}/${r.n}</td><td>${r.raw.toFixed(2)}</td><td>${Math.floor(r.used / 60)}m</td><td>${r.mode}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No quizzes yet.</td></tr>') +
+    `</table></div><button class="primary" id="home">Back</button>`;
+  $('#home').onclick = home;
+}
+
+// load data files in order, then render
+let left = FILES.length;
+FILES.forEach(f => { const s = document.createElement('script'); s.src = 'data/' + f + '.js?v=1'; s.onload = s.onerror = () => { if (--left === 0) home(); }; document.head.appendChild(s); });
+</script>
+</body>
+</html>
