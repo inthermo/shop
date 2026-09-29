@@ -88,10 +88,71 @@ const PLAN = [
   ['Day before', 'No new material. 15 min of Word Roots max. Pack: admission ticket, photo ID if required, #2 pencils, eraser, watch without alarm, water, snack. Bed early.'],
 ];
 
-const LS = {
-  get(k, d) { try { const v = localStorage.getItem('ssat.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('ssat.' + k, JSON.stringify(v)); } catch {} },
+// Progress lives in a profile per initials: localStorage 'ssat.<INI>.<key>', synced to the cloud (Apps Script store).
+const API = 'https://script.google.com/macros/s/AKfycbwvPcuDt9jGIX43PpN203wwHKxDaEdGq4SApMcdu1QyGh8iSZX93KC8O9nosoz29haKAQ/exec';
+const PKEYS = ['best', 'plan', 'misses', 'hist', 'testDate', 'mode', 'u'];
+const raw = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+let WHO = raw.get('ssat.who', ''), syncState = '', pushT = null;
+const LS = {
+  get(k, d) { return raw.get('ssat.' + WHO + '.' + k, d); },
+  set(k, v) { raw.set('ssat.' + WHO + '.' + k, v); if (k !== 'u') { raw.set('ssat.' + WHO + '.u', Date.now()); schedulePush(); } },
+};
+const profile = () => Object.fromEntries(PKEYS.map(k => [k, LS.get(k, null)]).filter(([, v]) => v !== null));
+function schedulePush() { clearTimeout(pushT); pushT = setTimeout(push, 1200); }
+function push() {
+  clearTimeout(pushT); if (!WHO) return;
+  const p = profile(); p.hist = (p.hist || []).slice(-150); p.misses = (p.misses || []).slice(-300);
+  fetch(API, { method: 'POST', body: JSON.stringify({ ssat: WHO, profile: p }), keepalive: true })
+    .then(() => setSync('saved ✓'), () => setSync('offline, saved on this device'));
+}
+function setSync(t) { syncState = t; const e = $('#sync'); if (e) e.textContent = t; }
+// Merge cloud + local: union history, keep best scores, OR plan boxes; misses/date/mode from whichever is newer.
+function merge(a, b) {
+  const newer = (a.u || 0) >= (b.u || 0) ? a : b, hk = h => h.ts || h.id + h.date + h.right + h.used;
+  const hist = [...(a.hist || []), ...(b.hist || [])].filter((h, i, all) => all.findIndex(x => hk(x) === hk(h)) === i)
+    .sort((x, y) => (x.ts || 0) - (y.ts || 0) || x.date.localeCompare(y.date));
+  const best = { ...(a.best || {}) };
+  for (const [id, v] of Object.entries(b.best || {})) if (!best[id] || v.pct > best[id].pct) best[id] = v;
+  const plan = []; for (let i = 0; i < Math.max((a.plan || []).length, (b.plan || []).length); i++) plan[i] = !!((a.plan || [])[i] || (b.plan || [])[i]);
+  return { best, plan, hist, misses: newer.misses || [], testDate: newer.testDate || a.testDate || b.testDate || '', mode: newer.mode || 'test', u: Math.max(a.u || 0, b.u || 0) };
+}
+async function signIn(ini) {
+  WHO = ini; raw.set('ssat.who', ini);
+  const people = raw.get('ssat.people', []); if (!people.includes(ini)) raw.set('ssat.people', [ini, ...people].slice(0, 6));
+  // One-time: progress saved before initials existed goes to the first person who signs in on this device.
+  if (!raw.get('ssat.migrated', false)) {
+    raw.set('ssat.migrated', true);
+    for (const k of PKEYS) { const v = raw.get('ssat.' + k, null); if (v !== null && LS.get(k, null) === null) raw.set('ssat.' + ini + '.' + k, v); }
+    raw.set('ssat.' + ini + '.u', Date.now());
+  }
+  $('#app').innerHTML = '<p class="muted">Loading your progress…</p>';
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
+    const r = await (await fetch(API + '?ssat=' + ini, { signal: ctl.signal })).json();
+    const m = merge(profile(), r.profile || {});
+    for (const k of PKEYS) raw.set('ssat.' + ini + '.' + k, m[k]);
+    syncState = 'synced ✓'; push();
+  } catch { syncState = 'offline, saved on this device'; }
+  home();
+}
+function who() {
+  clearInterval(tick); WHO = ''; raw.set('ssat.who', '');
+  const people = raw.get('ssat.people', []);
+  $('#app').className = '';
+  $('#app').innerHTML = `<h1>SSAT Upper Level Prep</h1><div class="card"><h2>Who's studying?</h2>
+    <p class="muted">Type your initials. Your scores, history, and misses are saved under them, so you can pick up on any device.</p>
+    ${people.length ? `<div class="row" style="margin-bottom:12px">${people.map(p => `<button class="primary" data-p="${p}">${p}</button>`).join('')}</div>` : ''}
+    <form id="wf" class="row"><input id="ini" maxlength="4" autocomplete="off" placeholder="e.g. AB" style="font-size:20px;width:7em;text-transform:uppercase;padding:8px">
+    <button class="primary">Start</button></form><p id="werr" class="muted"></p></div>`;
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => signIn(b.dataset.p));
+  $('#wf').onsubmit = e => { e.preventDefault(); const v = $('#ini').value.toUpperCase().replace(/[^A-Z]/g, '');
+    if (v.length < 2) { $('#werr').textContent = 'Use 2–4 letters.'; return; } signIn(v); };
+  $('#ini').focus();
+}
+addEventListener('pagehide', () => { if (pushT) push(); });
 const $ = s => document.querySelector(s);
 const L = 'ABCDE';
 const esc = s => String(s).replace(/&(?![#a-zA-Z0-9]+;)/g, '&amp;');
@@ -115,7 +176,7 @@ function home() {
   const testDate = LS.get('testDate', '');
   let days = '';
   if (testDate) { const d = Math.ceil((new Date(testDate + 'T08:00') - new Date()) / 864e5); days = d >= 0 ? `<b>${d}</b> day${d === 1 ? '' : 's'} to go` : 'Test date passed'; }
-  let h = `<h1>SSAT Upper Level Prep</h1>
+  let h = `<div class="row" style="justify-content:space-between"><h1>SSAT Upper Level Prep</h1><span class="muted">Studying as <b>${WHO}</b> · <span id="sync">${syncState}</span> · <a href="#" id="sw">switch</a></span></div>
   <div class="card"><div class="row" style="justify-content:space-between"><h2>10-day plan</h2>
     <span class="muted">Test date <input type="date" id="td" value="${testDate}"> ${days}</span></div>
     ${PLAN.map(([t, d], i) => `<label class="day ${plan[i] ? 'done' : ''}"><input type="checkbox" data-d="${i}" ${plan[i] ? 'checked' : ''}>
@@ -144,13 +205,14 @@ function home() {
   h += `<div class="card"><h2>Review my misses</h2><p class="muted">${misses.length} question${misses.length === 1 ? '' : 's'} missed or skipped. A question leaves this list once you get it right.</p>
     <div class="row"><button class="primary" id="rev" ${misses.length ? '' : 'disabled'}>Review ${Math.min(misses.length, 20)} misses</button>
     <button class="ghost" id="hist">Score history</button></div></div>
-    <p class="muted">Practice only. These are original questions written in the style of the real SSAT. Official practice tests are the benchmark. Progress is saved on this device only.</p>`;
+    <p class="muted">Practice only. These are original questions written in the style of the real SSAT. Official practice tests are the benchmark. Progress is saved under your initials and syncs across devices.</p>`;
   $('#app').innerHTML = h;
   $('#td').onchange = e => { LS.set('testDate', e.target.value); home(); };
   document.querySelectorAll('[data-d]').forEach(c => c.onchange = () => { const p = LS.get('plan', []); p[c.dataset.d] = c.checked; LS.set('plan', p); home(); });
   document.querySelectorAll('[name=mode]').forEach(r => r.onchange = () => LS.set('mode', r.value));
   document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => start(SSAT.sets[b.dataset.s]));
   $('#rev').onclick = review; $('#hist').onclick = history;
+  $('#sw').onclick = e => { e.preventDefault(); push(); who(); };
 }
 
 function start(set) {
@@ -234,7 +296,7 @@ function finish() {
   const used = Math.round((Date.now() - S.t0) / 1000);
   if (S.set.id !== 'REVIEW') {
     const best = LS.get('best', {}); if (!best[S.set.id] || pct > best[S.set.id].pct) best[S.set.id] = { pct }; LS.set('best', best);
-    const hist = LS.get('hist', []); hist.push({ id: S.set.id, title: S.title, date: new Date().toISOString().slice(0, 10), right, wrong, skip, n, raw, used, mode: S.mode }); LS.set('hist', hist);
+    const hist = LS.get('hist', []); hist.push({ ts: Date.now(), id: S.set.id, title: S.title, date: new Date().toISOString().slice(0, 10), right, wrong, skip, n, raw, used, mode: S.mode }); LS.set('hist', hist);
   }
   const cls = pct >= 80 ? 'good' : pct >= 60 ? 'mid' : 'poor';
   const guessCost = wrong / 4;
@@ -271,7 +333,7 @@ function history() {
 
 // load data files in order, then render
 let left = FILES.length;
-FILES.forEach(f => { const s = document.createElement('script'); s.src = 'data/' + f + '.js?v=1'; s.onload = s.onerror = () => { if (--left === 0) home(); }; document.head.appendChild(s); });
+FILES.forEach(f => { const s = document.createElement('script'); s.src = 'data/' + f + '.js?v=1'; s.onload = s.onerror = () => { if (--left === 0) WHO ? signIn(WHO) : who(); }; document.head.appendChild(s); });
 </script>
 </body>
 </html>
