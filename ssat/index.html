@@ -63,6 +63,7 @@
   .day.done > div { opacity:.55; }
   details summary { cursor:pointer; font-weight:600; }
   .tag { display:inline-block; font-size:.75rem; padding:1px 7px; border-radius:9px; background:var(--bg); color:var(--muted); }
+  .lbt td, .lbt th { padding:6px 5px; } @media (max-width:500px) { .lbt { font-size:14px; } }
 </style>
 </head>
 <body>
@@ -204,14 +205,14 @@ function home() {
   }
   h += `<div class="card"><h2>Review my misses</h2><p class="muted">${misses.length} question${misses.length === 1 ? '' : 's'} missed or skipped. A question leaves this list once you get it right.</p>
     <div class="row"><button class="primary" id="rev" ${misses.length ? '' : 'disabled'}>Review ${Math.min(misses.length, 20)} misses</button>
-    <button class="ghost" id="hist">Score history</button></div></div>
+    <button class="ghost" id="hist">Score history</button><button class="ghost" id="lb">🏆 Leaderboard</button></div></div>
     <p class="muted">Practice only. These are original questions written in the style of the real SSAT. Official practice tests are the benchmark. Progress is saved under your initials and syncs across devices.</p>`;
   $('#app').innerHTML = h;
   $('#td').onchange = e => { LS.set('testDate', e.target.value); home(); };
   document.querySelectorAll('[data-d]').forEach(c => c.onchange = () => { const p = LS.get('plan', []); p[c.dataset.d] = c.checked; LS.set('plan', p); home(); });
   document.querySelectorAll('[name=mode]').forEach(r => r.onchange = () => LS.set('mode', r.value));
   document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => start(SSAT.sets[b.dataset.s]));
-  $('#rev').onclick = review; $('#hist').onclick = history;
+  $('#rev').onclick = review; $('#hist').onclick = history; $('#lb').onclick = () => leaderboard();
   $('#sw').onclick = e => { e.preventDefault(); push(); who(); };
 }
 
@@ -318,9 +319,9 @@ function finish() {
       ${q.choices.map((c, k) => `<div class="pick ${k === q.answer ? 'ok' : k === a ? 'bad' : ''}"><b>${L[k]}</b><span>${c}</span></div>`).join('')}
       <div class="explain">${a === undefined ? 'Skipped. ' : ''}${q.explain}</div></details>`;
   }).join('') + '</div>';
-  h += `<div class="row"><button class="primary" id="home">Back to all quizzes</button>${S.set.id !== 'REVIEW' ? '<button class="ghost" id="again">Retake</button>' : ''}</div>`;
+  h += `<div class="row"><button class="primary" id="home">Back to all quizzes</button>${S.set.id !== 'REVIEW' ? '<button class="ghost" id="again">Retake</button><button class="ghost" id="lb">🏆 Leaderboard</button>' : ''}</div>`;
   $('#app').className = ''; $('#app').innerHTML = h; scrollTo(0, 0);
-  const set = S.set; $('#home').onclick = home; if ($('#again')) $('#again').onclick = () => start(set);
+  const set = S.set; $('#home').onclick = home; if ($('#again')) { $('#again').onclick = () => start(set); $('#lb').onclick = () => { push(); setTimeout(() => leaderboard(set.id), 1500); }; }
 }
 
 function history() {
@@ -329,6 +330,40 @@ function history() {
     (hist.map(r => `<tr><td>${r.date}</td><td>${r.title}</td><td>${r.right}/${r.n}</td><td>${r.raw.toFixed(2)}</td><td>${Math.floor(r.used / 60)}m</td><td>${r.mode}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No quizzes yet.</td></tr>') +
     `</table></div><button class="primary" id="home">Back</button>`;
   $('#home').onclick = home;
+}
+
+// Leaderboard: everyone's best timed (test-mode) score per quiz, from the cloud.
+async function leaderboard(pick = '') {
+  clearInterval(tick); $('#app').className = '';
+  $('#app').innerHTML = '<h1>🏆 Leaderboard</h1><p class="muted">Loading…</p>';
+  let board;
+  try { board = (await (await fetch(API + '?ssat_board=1')).json()).board || []; }
+  catch { $('#app').innerHTML = '<h1>🏆 Leaderboard</h1><div class="card">Couldn\'t reach the leaderboard. Check the connection.</div><button class="primary" id="home">Back</button>'; $('#home').onclick = home; return; }
+  const avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
+  const cell = v => v == null ? '<td class="muted">–</td>' : `<td class="${v >= 80 ? 'good' : v >= 60 ? 'mid' : 'poor'}">${v}%</td>`;
+  const me = r => r.ini === WHO ? ' style="background:var(--sel);font-weight:600"' : '';
+  const rows = board.map(r => {
+    const ids = Object.keys(r.sets), by = sec => ids.filter(id => SSAT.sets[id] && SSAT.sets[id].section === sec).map(id => r.sets[id].pct);
+    return { ...r, n: ids.length, all: avg(ids.map(id => r.sets[id].pct)), v: avg(by('verbal')), m: avg(by('math')), rd: avg(by('reading')) };
+  }).sort((a, b) => b.all - a.all || b.n - a.n);
+  const quizzes = FILES.map(f => SSAT.sets[f]).filter(Boolean);
+  pick = pick || (quizzes.find(q => board.some(r => r.sets[q.id])) || quizzes[0]).id;
+  const per = board.filter(r => r.sets[pick]).sort((a, b) => b.sets[pick].pct - a.sets[pick].pct || b.sets[pick].raw - a.sets[pick].raw);
+  const medal = i => ['🥇', '🥈', '🥉'][i] || i + 1;
+  $('#app').innerHTML = `<h1>🏆 Leaderboard</h1>
+    <p class="muted">Best <b>timed</b> (Test mode) score on each quiz. Practice-mode scores don't count.</p>
+    <div class="card"><h2>Overall</h2><div style="overflow-x:auto"><table class="t lbt"><tr><th>#</th><th>Who</th><th>Quizzes</th><th>Avg</th><th>Verbal</th><th>Math</th><th>Reading</th></tr>` +
+    (rows.map((r, i) => `<tr${me(r)}><td>${medal(i)}</td><td>${r.ini}</td><td>${r.n}</td>${cell(r.all)}${cell(r.v)}${cell(r.m)}${cell(r.rd)}</tr>`).join('')
+      || '<tr><td colspan="7" class="muted">No timed quizzes yet. Be the first!</td></tr>') +
+    `</table></div><p class="muted" style="margin:.6em 0 0">Avg = average of your best score on each quiz you've taken.</p></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>By quiz</h2>
+      <select id="pq">${quizzes.map(q => `<option value="${q.id}" ${q.id === pick ? 'selected' : ''}>${q.title}</option>`).join('')}</select></div>
+      <table class="t"><tr><th>#</th><th>Who</th><th>Best</th><th>Raw</th></tr>` +
+    (per.map((r, i) => `<tr${me(r)}><td>${medal(i)}</td><td>${r.ini}</td>${cell(r.sets[pick].pct)}<td>${r.sets[pick].raw.toFixed(2)}</td></tr>`).join('')
+      || '<tr><td colspan="4" class="muted">Nobody has taken this one timed yet.</td></tr>') +
+    `</table></div><button class="primary" id="home">Back</button>`;
+  $('#pq').onchange = e => leaderboard(e.target.value);
+  $('#home').onclick = home; scrollTo(0, 0);
 }
 
 // load data files in order, then render
