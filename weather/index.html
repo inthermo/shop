@@ -237,6 +237,13 @@ const fmtW  = ms => unit === 'metric' ? Math.round(ms) : Math.round(ms * 2.23694
 const wUnit = () => unit === 'metric' ? 'm/s' : 'mph';
 const fmtP  = mm => (Math.round(mm * 10) / 10).toFixed(1);
 const hhmm  = iso => iso.slice(11, 16);
+function dayLen(a, b){
+  // sunrise/sunset come as local ISO strings ("2026-10-09T07:21"); diff them without Date() so browser TZ/DST can't skew it
+  if (!a || !b) return '';
+  const mins = x => { const t = x.split('T')[1]; return t ? +t.slice(0,2)*60 + +t.slice(3,5) : NaN; };
+  let d = mins(b) - mins(a); if (isNaN(d)) return ''; if (d < 0) d += 1440;
+  return Math.floor(d/60) + 'h ' + String(d%60).padStart(2,'0') + 'm';
+}
 const esc   = s => s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 function renderTabs(){
@@ -320,6 +327,7 @@ function renderOverview(){
         <div class="ovs"><label>Wind</label><b>${fmtW(cur.wind_speed_10m)} ${wUnit()}</b></div>
         <div class="ovs"><label>Sunrise</label><b>🌅 ${hhmm(dl.sunrise[0])}</b></div>
         <div class="ovs"><label>Sunset</label><b>🌇 ${hhmm(dl.sunset[0])}</b></div>
+        <div class="ovs"><label>Daylight</label><b>☀️ ${dayLen(dl.sunrise[0], dl.sunset[0])}</b></div>
       </div>
     </div>`;
   }).join('');
@@ -454,7 +462,7 @@ function render(){
         <td class="wnd">${fmtW(h.wind_speed_10m[i])}${h.wind_gusts_10m[i] != null ? ` <span class="gust">(${fmtW(h.wind_gusts_10m[i])})</span>` : ''}<span class="arr" style="transform:rotate(${(h.wind_direction_10m[i] + 180) % 360}deg)">↑</span></td>
       </tr>`;
     }).join('');
-    const sun = d.sunrise ? `<div class="sunrow"><span>🌅 ${hhmm(d.sunrise[di])}</span><span>🌇 ${hhmm(d.sunset[di])}</span></div>` : '';
+    const sun = d.sunrise ? `<div class="sunrow"><span>🌅 ${hhmm(d.sunrise[di])}</span><span>🌇 ${hhmm(d.sunset[di])}</span><span>☀️ ${dayLen(d.sunrise[di], d.sunset[di])} daylight</span></div>` : '';
     return `<details class="day" data-day="${day}" ${day === open ? 'open' : ''}>
       <summary>
         <div><div class="dname">${dname}</div><div class="ddate">${ddate}</div></div>
