@@ -7,20 +7,14 @@
 <title>Friesland Sailing Week</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
 <style>
-/* Layout: one long scroll, full-bleed colored bands, content column max 1040px; nautical chart feel (tanbark sail on lake water). */
+/* Layout: one long scroll, full-bleed colored bands, content column max 1080px; nautical chart feel (tanbark sail on lake water). */
 :root{
-  --water:#0f2f45;      /* deep lake */
-  --water-2:#163f5c;
-  --canvas:#f6f1e7;     /* sailcloth */
-  --canvas-2:#ece4d3;
-  --ink:#1b2630;
-  --ink-soft:#5a6672;
-  --sail:#b4532c;       /* tanbark */
-  --sail-soft:#d9a07e;
-  --line:#d8cfbd;
-  --bg:var(--canvas);
-  --fg:var(--ink);
-  --card:#fffdf8;
+  --water:#0f2f45; --water-2:#163f5c;
+  --canvas:#f6f1e7; --canvas-2:#ece4d3;
+  --ink:#1b2630; --ink-soft:#5a6672;
+  --sail:#b4532c; --sail-soft:#d9a07e;
+  --line:#d8cfbd; --card:#fffdf8;
+  --bg:var(--canvas); --fg:var(--ink);
   --display:"Josefin Sans",system-ui,sans-serif;
   --body:"Source Serif 4",Georgia,"Times New Roman",serif;
 }
@@ -35,12 +29,15 @@
   --water:#071622; --water-2:#0f2f45; --card:#12293b; --line:#24415a; --sail:#d6744a; --sail-soft:#8a4426; color-scheme:dark;
 }
 *{box-sizing:border-box}
+html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:17px;line-height:1.55;margin:0}
+img{max-width:100%;display:block}
 .band{padding-block:56px}
-.band-inner{max-width:1040px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.band-inner{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .water{background:var(--water);color:#f3ede1}
 .water .eyebrow{color:var(--sail-soft)}
 .water .muted{color:#bcc9d3}
+.water a{text-decoration-color:var(--sail-soft)}
 h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.1}
 h1{font-size:clamp(40px,8vw,84px);font-weight:300;letter-spacing:.01em}
 h1 b{font-weight:700}
@@ -50,17 +47,33 @@ p{margin:0 0 14px;max-width:62ch}
 .eyebrow{font-family:var(--display);text-transform:uppercase;letter-spacing:.18em;font-size:12px;font-weight:600;color:var(--sail);margin-bottom:14px}
 .muted{color:var(--ink-soft)}
 a{color:inherit;text-decoration-color:var(--sail);text-underline-offset:3px}
-a:focus-visible,button:focus-visible{outline:3px solid var(--sail);outline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+a:focus-visible{outline:3px solid var(--sail);outline-offset:3px}
+.links{display:flex;flex-wrap:wrap;gap:10px 18px;font-family:var(--display);font-size:14px;letter-spacing:.04em;margin-top:6px}
+.links a{display:inline-flex;align-items:center;gap:6px}
+.links a::after{content:"↗";font-size:12px;opacity:.7}
 
 /* hero */
-.hero{padding-block:72px 64px;position:relative;overflow:hidden}
-.hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center}
-.hero svg{width:100%;max-width:420px;height:auto;display:block;margin:0 auto}
+.hero{padding-block:72px 64px}
+.hero-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:40px;align-items:center}
+.hero figure{margin:0;border:6px solid #f3ede1;transform:rotate(1.5deg);box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.hero figure img{aspect-ratio:3/2;object-fit:cover;width:100%}
 .dates{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:28px;font-family:var(--display)}
 .dates div{display:flex;flex-direction:column}
 .dates .k{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--sail-soft)}
 .dates .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
 .gift{display:inline-block;border:1px solid var(--sail-soft);color:var(--sail-soft);font-family:var(--display);letter-spacing:.2em;text-transform:uppercase;font-size:11px;padding:7px 12px;margin-bottom:22px}
+
+/* photo strips */
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0 16px}
+.strip figure{margin:0;min-width:0}
+.strip img{aspect-ratio:3/2;object-fit:cover;width:100%;border-radius:2px}
+.strip figcaption{font-size:13px;color:var(--ink-soft);margin-top:6px;font-family:var(--display);letter-spacing:.03em}
+.water .strip figcaption{color:#bcc9d3}
+.feature{display:grid;grid-template-columns:1.1fr 1fr;gap:36px;align-items:start}
+.feature>div{min-width:0}
+.feature figure{margin:0}
+.feature img{aspect-ratio:3/2;object-fit:cover;width:100%;border-radius:2px}
 
 /* week strip */
 .week{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
@@ -80,44 +93,50 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--sail);outline-offse
 .two>div{min-width:0}
 
 /* cards */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.card{background:var(--card);border:1px solid var(--line);padding:20px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden}
+.card img{aspect-ratio:16/10;object-fit:cover;width:100%}
+.card .body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:4px;flex:1}
 .card .meta{font-family:var(--display);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sail);margin-bottom:4px}
 .card p{font-size:15.5px;margin:0;max-width:none}
-.card .tag{margin-top:auto;padding-top:10px;font-size:13px;color:var(--ink-soft)}
+.card .tag{margin-top:auto;padding-top:10px;font-size:13.5px;font-family:var(--display);letter-spacing:.03em}
+.card .tag a::after{content:" ↗";font-size:11px;opacity:.7}
+.card.spa{border-left:4px solid var(--sail)}
 
 /* route */
 .route{display:grid;grid-template-columns:1fr 1.1fr;gap:36px;align-items:center}
 .route svg{width:100%;height:auto;display:block}
 .hops{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px}
-.hops li{display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start}
+.hops li{display:grid;grid-template-columns:48px 1fr;gap:14px;align-items:start}
 .hops .night{font-family:var(--display);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sail-soft);padding-top:4px}
 .hops b{font-family:var(--display);font-size:18px;font-weight:600;display:block}
 .hops p{margin:2px 0 0;font-size:15.5px;color:#cbd5dd;max-width:none}
 
-/* spa */
-.spa{border-left:4px solid var(--sail)}
+/* practical */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 28px;margin-top:8px}
+.facts div{border-top:1px solid var(--line);padding-top:10px;min-width:0}
+.facts .k{font-family:var(--display);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--sail);margin-bottom:4px}
+.facts p{font-size:15.5px;margin:0;max-width:none}
 .note{background:var(--canvas-2);border:1px solid var(--line);padding:14px 18px;font-size:15px;max-width:none}
 
-footer{padding-block:36px;font-size:14px}
-footer p{max-width:none}
+footer{font-size:13.5px}
+footer p{max-width:none;color:var(--ink-soft)}
 
-@media (max-width:860px){
-  .hero-grid,.two,.route{grid-template-columns:1fr}
-  .hero svg{max-width:300px}
+@media (max-width:900px){
+  .hero-grid,.two,.route,.feature{grid-template-columns:1fr}
+  .hero figure{transform:none;max-width:560px}
   .week{grid-template-columns:repeat(4,1fr)}
+  .strip{grid-template-columns:repeat(2,1fr)}
 }
-@media (max-width:460px){
+@media (max-width:480px){
   .week{grid-template-columns:repeat(2,1fr)}
   .band{padding-block:40px}
-}
-@media (prefers-reduced-motion:no-preference){
-  .hero svg .wave{animation:drift 9s ease-in-out infinite alternate}
-  @keyframes drift{from{transform:translateX(-6px)}to{transform:translateX(6px)}}
+  .strip{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
+
 <section class="band water hero">
   <div class="band-inner hero-grid">
     <div>
@@ -126,183 +145,205 @@ footer p{max-width:none}
       <p class="muted" style="font-size:19px;margin-top:18px">One July week in Friesland, the lake country of the northern Netherlands. A waterfront house for all eight of us in the village of Gaastmeer, with a traditional Frisian sailing boat tied up at our own jetty from Monday to Friday.</p>
       <div class="dates">
         <div><span class="k">Arrive</span><span class="v">Mon 12 July 2027</span></div>
-        <div><span class="k">Boat week</span><span class="v">Mon 12 – Fri 16</span></div>
+        <div><span class="k">Boat</span><span class="v">Mon 12 – Fri 16</span></div>
         <div><span class="k">Depart</span><span class="v">Mon 19 July 2027</span></div>
       </div>
     </div>
-    <svg viewBox="0 0 420 360" role="img" aria-label="A lemsteraak, the traditional Frisian flat-bottomed sailing boat, with its tanbark sails">
-      <defs>
-        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#163f5c"/><stop offset="1" stop-color="#0f2f45"/></linearGradient>
-      </defs>
-      <rect x="0" y="0" width="420" height="360" fill="url(#sky)"/>
-      <circle cx="330" cy="78" r="26" fill="#f3ede1" opacity=".85"/>
-      <!-- mast -->
-      <rect x="196" y="48" width="5" height="212" fill="#e8dcc3"/>
-      <!-- gaff mainsail (tanbark) -->
-      <path d="M201 60 L201 240 L92 240 Q110 160 201 60 Z" fill="#b4532c"/>
-      <path d="M201 60 L201 240 L140 240 Q150 150 201 60 Z" fill="#a4482a" opacity=".6"/>
-      <!-- jib -->
-      <path d="M205 80 L205 236 L300 236 Z" fill="#c8623a"/>
-      <path d="M205 80 L205 236 L262 236 Z" fill="#b4532c" opacity=".5"/>
-      <!-- hull -->
-      <path d="M64 258 Q60 246 80 246 L330 246 Q360 246 346 262 L340 286 Q210 300 86 286 Z" fill="#2b241f"/>
-      <path d="M78 246 L330 246 Q352 246 344 258 L84 258 Q70 258 78 246 Z" fill="#4a3a2e"/>
-      <!-- leeboard -->
-      <path d="M232 250 L270 252 L262 292 L240 290 Z" fill="#3a2d24"/>
-      <!-- water -->
-      <g class="wave" fill="none" stroke="#f3ede1" stroke-opacity=".35" stroke-width="2.5" stroke-linecap="round">
-        <path d="M-10 300 Q30 290 70 300 T150 300 T230 300 T310 300 T390 300 T470 300"/>
-        <path d="M-10 322 Q30 312 70 322 T150 322 T230 322 T310 322 T390 322 T470 322" stroke-opacity=".22"/>
-        <path d="M-10 344 Q30 334 70 344 T150 344 T230 344 T310 344 T390 344 T470 344" stroke-opacity=".12"/>
-      </g>
-    </svg>
+    <figure><img src="img/boat1.jpg" alt="The lemsteraak Riepel under full sail on a Frisian lake" width="795" height="530"></figure>
   </div>
 </section>
 
-<section class="band">
+<section class="band" id="house">
   <div class="band-inner">
-    <div class="eyebrow">The shape of the week</div>
-    <h2>Two homes in one week</h2>
-    <div class="two">
+    <div class="eyebrow">Base camp · Monday to Monday</div>
+    <h2>The house: Ringwiel, Gaastmeer</h2>
+    <div class="feature">
       <div>
-        <h3>The house, Monday to Monday</h3>
-        <p>A detached holiday house in Gaastmeer, a tiny village on the Fluessen and Gaastmeer lakes in the south-west corner of Friesland. Three bedrooms, sleeps eight, a south-facing terrace on the water and a private jetty at the bottom of the garden. This is base camp all week, and home every night for whoever is not sleeping aboard.</p>
+        <p>A detached holiday house on the edge of Gaastmeer, a village of a few hundred people on the Fluessen and Gaastmeer lakes in the south-west corner of Friesland. Three bedrooms with two double beds and two sets of bunks, plus a sofa bed, so all eight fit. A south-facing terrace and lawn run straight down to the water, with a private jetty where the boat will live.</p>
+        <p>Dishwasher, big windows, a deck with a parasol and a table for eight, and sailing-club masts across the water. This is home every night for whoever is not sleeping aboard. Two sister houses on the same water, Morra Wieltje and It Fliet, are the backups if Ringwiel is taken.</p>
+        <div class="links">
+          <a href="https://www.waterrecreatiesyperda.com/holiday-cottages/ringwielg8-en.html">Ringwiel 8</a>
+          <a href="https://www.waterrecreatiesyperda.com/holiday-cottages/morra-wieltjeh8-en.html">Morra Wieltje 8</a>
+          <a href="https://www.waterrecreatiesyperda.com/holiday-cottages/it-flieta8-en.html">It Fliet 8</a>
+          <a href="https://www.waterrecreatiesyperda.com/holiday-cottages.html">All Syperda houses</a>
+        </div>
       </div>
+      <figure><img src="img/house1.jpg" alt="Ringwiel seen from the water: lawn, terrace and private jetty" width="703" height="470"></figure>
+    </div>
+    <div class="strip">
+      <figure><img src="img/house2.jpg" alt="The terrace with its dining table and parasol" width="701" height="469"><figcaption>Terrace off the living room</figcaption></figure>
+      <figure><img src="img/house3.jpg" alt="View from the deck across the lawn to the harbour" width="703" height="472"><figcaption>Deck, lawn, water</figcaption></figure>
+      <figure><img src="img/heeg.jpg" alt="Wooden boats moored in the harbour at Heeg" width="1280" height="816"><figcaption>Heeg, the next village over</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band water" id="boat">
+  <div class="band-inner">
+    <div class="eyebrow">Monday to Friday · at our jetty</div>
+    <h2>The boat: lemsteraak <em>Riepel</em></h2>
+    <div class="feature">
+      <figure><img src="img/boat2.jpg" alt="Riepel sailing under a blue sky" width="796" height="530"></figure>
       <div>
-        <h3>The boat, Monday to Friday</h3>
-        <p>A lemsteraak, the classic Frisian flat-bottomed sailing boat with wooden leeboards and red-brown "tanbark" sails. Ten metres long, seven berths, a proper galley and a loo below. No licence is needed on these lakes, and the boat is ours without a skipper. It is handed over at our jetty on Monday afternoon, the same day we arrive, and goes back Friday morning.</p>
+        <p class="muted">A lemsteraak is the classic Frisian flat-bottomed sailing boat, with wooden leeboards instead of a keel and a gaff rig that was designed for the old Zuiderzee. <em>Riepel</em> is ten metres long and sleeps seven: five fixed berths under the foredeck and two in the deckhouse. Galley, toilet, bow thruster, engine for when the wind quits.</p>
+        <p class="muted">No licence is needed on a boat this size, and we sail her ourselves with no skipper. Handover is at Gaastmeer on Monday afternoon, the same day we get the house keys, and she goes back Friday morning. Her sister ship, the zeeschouw <em>Breesan</em>, is the fallback.</p>
+        <div class="links">
+          <a href="https://www.waterrecreatiesyperda.com/flat-bottomed-ships/lemsteraak-riepel-7-persons.html">Riepel on the Syperda site</a>
+          <a href="https://www.waterrecreatiesyperda.com/flat-bottomed-ships/zeeschouw-breesan-7-persons.html">Breesan</a>
+          <a href="https://www.waterrecreatiesyperda.com/flat-bottomed-ships.html">The whole fleet</a>
+          <a href="https://www.waterrecreatiesyperda.com/renting-a-ship-for-the-first-time.html">Sailing a flat-bottom, explained</a>
+        </div>
       </div>
     </div>
-    <div class="week" style="margin-top:28px">
-      <div class="day boat"><div class="d">Mon</div><div class="n">12</div><p>Fly in, drive north. Keys to the house, boat at the jetty by evening</p></div>
-      <div class="day boat"><div class="d">Tue</div><div class="n">13</div><p>First sail, across to Heeg. Shore party settles in</p></div>
-      <div class="day boat"><div class="d">Wed</div><div class="n">14</div><p>Crew on to Woudsend or Sloten. Shore party: spa day</p></div>
-      <div class="day boat"><div class="d">Thu</div><div class="n">15</div><p>Sail home to the jetty, dinner all together</p></div>
-      <div class="day land"><div class="d">Fri</div><div class="n">16</div><p>Boat back by 10 am. Afternoon at the beach</p></div>
+    <div class="strip">
+      <figure><img src="img/boat3.jpg" alt="The cabin of Riepel: galley, table and berths in red upholstery" width="796" height="530"><figcaption>Below deck</figcaption></figure>
+      <figure><img src="img/stavoren.jpg" alt="The harbour at Stavoren with traditional ships moored" width="1280" height="336"><figcaption>Stavoren, gateway to the IJsselmeer</figcaption></figure>
+      <figure><img src="img/enkhuizen.jpg" alt="The Drommedaris tower at the harbour mouth of Enkhuizen" width="1280" height="853"><figcaption>Enkhuizen, across the water</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="week">
+  <div class="band-inner">
+    <div class="eyebrow">The shape of the week</div>
+    <h2>Eight days, two homes</h2>
+    <div class="week">
+      <div class="day boat"><div class="d">Mon</div><div class="n">12</div><p>Fly in, drive north. House keys at 4, boat at the jetty by evening</p></div>
+      <div class="day boat"><div class="d">Tue</div><div class="n">13</div><p>Crew sails to Stavoren. Shore party settles in</p></div>
+      <div class="day boat"><div class="d">Wed</div><div class="n">14</div><p>Crew crosses to Enkhuizen, night there. Shore party: spa day</p></div>
+      <div class="day boat"><div class="d">Thu</div><div class="n">15</div><p>Crew sails home to the jetty, dinner all together</p></div>
+      <div class="day land"><div class="d">Fri</div><div class="n">16</div><p>Boat back by 10. Afternoon at the beach</p></div>
       <div class="day land"><div class="d">Sat</div><div class="n">17</div><p>Day trip together, everyone ashore</p></div>
       <div class="day land"><div class="d">Sun</div><div class="n">18</div><p>Bikes, a swim off the jetty, last evening on the terrace</p></div>
-      <div class="day land"><div class="d">Mon</div><div class="n">19</div><p>Hand back the keys, drive to Schiphol</p></div>
+      <div class="day land"><div class="d">Mon</div><div class="n">19</div><p>Keys back by 10:30, drive to Schiphol</p></div>
     </div>
     <div class="legend"><span class="b">Boat at the jetty</span><span class="l">House only</span></div>
   </div>
 </section>
 
-<section class="band water">
+<section class="band water" id="voyage">
   <div class="band-inner route">
     <div>
       <div class="eyebrow">For the sailing crew</div>
-      <h2>Two nights out, four villages</h2>
-      <p class="muted">Short hops of two to four hours a day on sheltered lakes. Bridges open for you, speed limits keep everyone honest, and every evening ends in a village harbour with a bakery at the end of the dock. The sailing party is two adults and the four kids; the boat has room for all six. Tuesday and Wednesday nights are spent away, Monday and Thursday nights at our own jetty.</p>
+      <h2>Across the IJsselmeer to Enkhuizen</h2>
+      <p class="muted">A real voyage for the crew of two adults and four kids: down the lakes and the Johan Frisokanaal to the old Zuiderzee port of Stavoren, through the sea lock, then a crossing of open water to Enkhuizen on the far shore. Lemsteraaks were built for exactly this stretch of water, and Syperda's boats are cleared for the IJsselmeer and the Wadden Sea.</p>
       <ul class="hops">
-        <li><span class="night">Night 1</span><div><b>Heeg</b><p>Across the Heegermeer to the old watersport village. Harbour cafés, ice cream on the quay.</p></div></li>
-        <li><span class="night">Night 2</span><div><b>Woudsend</b><p>Quiet canal village between two lakes, with the Slotermeer right next door for an afternoon of open water.</p></div></li>
-        <li><span class="night">Or</span><div><b>Sloten or Sneek</b><p>Swap Woudsend for Sloten, the smallest of Friesland's eleven cities, all canals and windmills, or for Sneek with the Waterpoort gate and shops. Pick by mood.</p></div></li>
-        <li><span class="night">Stretch</span><div><b>Stavoren</b><p>Through the Johan Frisokanaal to the IJsselmeer harbour and a beach. Only in settled weather and with an early start.</p></div></li>
+        <li><span class="night">Tue</span><div><b>Gaastmeer to Stavoren</b><p>About three hours through the Fluessen and the canal to the harbour town at the edge of the IJsselmeer. Beach at Vrouwezand, fish on the quay, early night aboard.</p></div></li>
+        <li><span class="night">Wed</span><div><b>Stavoren to Enkhuizen</b><p>Through the lock and roughly 20 km of open water, three to four hours with a fair wind. Tie up in the Buitenhaven under the Drommedaris tower and spend the evening in one of the best-preserved towns on the old Zuiderzee.</p></div></li>
+        <li><span class="night">Night</span><div><b>Enkhuizen</b><p>Sleep aboard in the harbour. Morning at the <a href="https://www.zuiderzeemuseum.nl/en">Zuiderzeemuseum</a>, an open-air village of rescued houses reached by boat, before casting off.</p></div></li>
+        <li><span class="night">Thu</span><div><b>Enkhuizen home to the jetty</b><p>Cross back to Stavoren and carry on up the canal to Gaastmeer, a long but easy day with the engine as backup. If the wind says no, the night is Stavoren and the run home is first thing Friday.</p></div></li>
+        <li><span class="night">Plan B</span><div><b>The lakes loop</b><p>In a hard blow the IJsselmeer stays closed to us, and the same days become Heeg, Woudsend and Sloten on sheltered water.</p></div></li>
       </ul>
+      <p class="muted" style="margin-top:16px;font-size:15px">The shore party can ride the <a href="https://www.veerboot.info/">Stavoren to Enkhuizen foot ferry</a> on Wednesday, meet the crew for lunch, and take the ferry back.</p>
     </div>
-    <svg viewBox="0 0 420 380" role="img" aria-label="Schematic map of the sailing hops between Gaastmeer, Heeg, Woudsend, Sloten, Sneek and Stavoren">
-      <rect width="420" height="380" fill="#163f5c" rx="8"/>
-      <!-- lakes -->
-      <ellipse cx="150" cy="235" rx="78" ry="46" fill="#1f5476" opacity=".9"/>
-      <ellipse cx="238" cy="178" rx="52" ry="34" fill="#1f5476" opacity=".9"/>
-      <ellipse cx="262" cy="292" rx="56" ry="32" fill="#1f5476" opacity=".9"/>
-      <ellipse cx="60" cy="150" rx="70" ry="110" fill="#0f2f45" opacity=".9"/>
-      <text x="150" y="240" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">FLUESSEN</text>
-      <text x="238" y="182" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">HEEGERMEER</text>
-      <text x="262" y="296" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">SLOTERMEER</text>
-      <text x="48" y="150" fill="#6f93ab" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2" transform="rotate(-90 48 150)">IJSSELMEER</text>
-      <!-- route -->
-      <path d="M118 268 L205 206 L240 250 L288 300 L330 110" fill="none" stroke="#d9a07e" stroke-width="3" stroke-dasharray="7 6" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M118 268 L112 200 L96 150" fill="none" stroke="#d9a07e" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round" opacity=".6"/>
-      <!-- towns -->
-      <g font-family="Josefin Sans, sans-serif" font-size="13" font-weight="600" fill="#f3ede1">
-        <circle cx="118" cy="268" r="7" fill="#b4532c" stroke="#f3ede1" stroke-width="2"/><text x="112" y="292" text-anchor="middle">Gaastmeer</text>
-        <circle cx="205" cy="206" r="5" fill="#f3ede1"/><text x="205" y="228" text-anchor="middle">Heeg</text>
-        <circle cx="240" cy="250" r="5" fill="#f3ede1"/><text x="200" y="256" text-anchor="end">Woudsend</text>
-        <circle cx="288" cy="300" r="5" fill="#f3ede1"/><text x="288" y="324" text-anchor="middle">Sloten</text>
-        <circle cx="330" cy="110" r="5" fill="#f3ede1"/><text x="330" y="100" text-anchor="middle">Sneek</text>
-        <circle cx="96" cy="150" r="5" fill="#f3ede1" opacity=".8"/><text x="100" y="140" text-anchor="start" opacity=".8">Stavoren</text>
-      </g>
-      <text x="400" y="368" fill="#6f93ab" font-family="Josefin Sans, sans-serif" font-size="9" text-anchor="end" letter-spacing="1">NOT TO SCALE · N ↑</text>
-    </svg>
+    <div>
+      <svg viewBox="0 0 420 380" role="img" aria-label="Schematic map of the voyage from Gaastmeer via Stavoren across the IJsselmeer to Enkhuizen, with the sheltered lakes loop as plan B">
+        <rect width="420" height="380" fill="#163f5c" rx="8"/>
+        <ellipse cx="150" cy="235" rx="78" ry="46" fill="#1f5476" opacity=".9"/>
+        <ellipse cx="238" cy="178" rx="52" ry="34" fill="#1f5476" opacity=".9"/>
+        <ellipse cx="262" cy="292" rx="56" ry="32" fill="#1f5476" opacity=".9"/>
+        <ellipse cx="52" cy="200" rx="78" ry="165" fill="#0f2f45" opacity=".9"/>
+        <text x="150" y="240" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">FLUESSEN</text>
+        <text x="238" y="182" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">HEEGERMEER</text>
+        <text x="262" y="296" fill="#8fb2c9" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2">SLOTERMEER</text>
+        <text x="30" y="200" fill="#6f93ab" font-family="Josefin Sans, sans-serif" font-size="10" text-anchor="middle" letter-spacing="2" transform="rotate(-90 30 200)">IJSSELMEER</text>
+        <path d="M118 268 L112 200 L96 150 L48 330" fill="none" stroke="#d9a07e" stroke-width="3" stroke-dasharray="7 6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M118 268 L205 206 L240 250 L288 300" fill="none" stroke="#d9a07e" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round" opacity=".5"/>
+        <g font-family="Josefin Sans, sans-serif" font-size="13" font-weight="600" fill="#f3ede1">
+          <circle cx="118" cy="268" r="7" fill="#b4532c" stroke="#f3ede1" stroke-width="2"/><text x="112" y="292" text-anchor="middle">Gaastmeer</text>
+          <circle cx="205" cy="206" r="5" fill="#f3ede1" opacity=".7"/><text x="205" y="228" text-anchor="middle" opacity=".7">Heeg</text>
+          <circle cx="240" cy="250" r="5" fill="#f3ede1" opacity=".7"/><text x="200" y="256" text-anchor="end" opacity=".7">Woudsend</text>
+          <circle cx="288" cy="300" r="5" fill="#f3ede1" opacity=".7"/><text x="288" y="324" text-anchor="middle" opacity=".7">Sloten</text>
+          <circle cx="330" cy="110" r="5" fill="#f3ede1" opacity=".7"/><text x="330" y="100" text-anchor="middle" opacity=".7">Sneek</text>
+          <circle cx="96" cy="150" r="5" fill="#f3ede1"/><text x="104" y="146" text-anchor="start">Stavoren</text>
+          <circle cx="48" cy="330" r="6" fill="#b4532c" stroke="#f3ede1" stroke-width="2"/><text x="60" y="350" text-anchor="start">Enkhuizen</text>
+        </g>
+        <text x="400" y="368" fill="#6f93ab" font-family="Josefin Sans, sans-serif" font-size="9" text-anchor="end" letter-spacing="1">NOT TO SCALE · N ↑</text>
+      </svg>
+      <div class="strip" style="grid-template-columns:1fr 1fr">
+        <figure><img src="img/zuiderzeemuseum.jpg" alt="Historic harbour buildings at the Zuiderzeemuseum in Enkhuizen" width="1280" height="853"><figcaption>Zuiderzeemuseum, Enkhuizen</figcaption></figure>
+        <figure><img src="img/woudsend.jpg" alt="Woudsend village seen from the bridge" width="1280" height="960"><figcaption>Woudsend, on the plan B loop</figcaption></figure>
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="band">
+<section class="band" id="spa">
   <div class="band-inner">
     <div class="eyebrow">For the shore party</div>
     <h2>Spa days while the crew is out</h2>
     <p>Friesland does the Dutch sauna culture properly: thermal pools, a sauna garden, hamam rituals, and a massage and facial menu. The closest and best is about half an hour from the house, so a spa day fits easily between breakfast on the terrace and dinner with the returning sailors.</p>
     <div class="cards">
-      <div class="card spa">
+      <div class="card spa"><div class="body">
         <div class="meta">Joure · about 30 min · first choice</div>
         <h3>De Woudfennen</h3>
         <p>The region's big wellness resort. Finnish, herbal, salt-stone, Turkish steam and a panoramic kota sauna, a hamam ritual, indoor and outdoor pools, massages, and a beauty institute for facials and combination treatments. There is a hotel on site if a night away appeals.</p>
-        <div class="tag"><a href="https://www.waterlandvanfriesland.nl/en/locations/2513928149/wellness-beauty-sauna-de-woudfennen">Details</a></div>
-      </div>
-      <div class="card spa">
+        <div class="tag"><a href="https://www.dewoudfennen.nl/">dewoudfennen.nl</a></div>
+      </div></div>
+      <div class="card spa"><div class="body">
         <div class="meta">Bergum · about 45 min</div>
         <h3>Sauna de Leeuwerikhoeve</h3>
         <p>A farmhouse sauna in the Frisian woods. Finnish and salt-stone saunas, herbal bath, hammam, massages, body and facial treatments, and a restaurant for a long lunch.</p>
-        <div class="tag"><a href="https://zwemindex.nl/sneek/sauna-wellness">Details</a></div>
-      </div>
-      <div class="card spa">
+        <div class="tag"><a href="https://www.leeuwerikhoeve.nl/">leeuwerikhoeve.nl</a></div>
+      </div></div>
+      <div class="card spa"><div class="body">
         <div class="meta">Vrouwenparochie · about 50 min</div>
         <h3>De Zoutbron</h3>
         <p>Saunas plus a warm salt-water bath fed by its own underground spring. Massages, and a bed and breakfast attached. Smaller and calmer than the big resorts.</p>
-        <div class="tag"><a href="https://zwemindex.nl/sneek/sauna-wellness">Details</a></div>
-      </div>
-      <div class="card spa">
+        <div class="tag"><a href="https://www.dezoutbron.nl/">dezoutbron.nl</a></div>
+      </div></div>
+      <div class="card spa"><div class="body">
         <div class="meta">Minnertsga · about 45 min</div>
         <h3>Wellness Instituut Lucia</h3>
         <p>Friesland's first hammam, with sauna, whirlpool and a menu of scrubs and detox treatments. Good for a half day with the traditional soap-and-steam ritual.</p>
-        <div class="tag"><a href="https://zwemindex.nl/sneek/sauna-wellness">Details</a></div>
-      </div>
+        <div class="tag"><a href="https://zwemindex.nl/minnertsga/sauna-wellness">Listing and contact</a></div>
+      </div></div>
     </div>
     <p class="note" style="margin-top:18px">Good to know: most Dutch saunas are swimwear-free by default, and the bigger ones run one or two swimwear days a week. Check the calendar when booking treatments, and book massages ahead for July.</p>
   </div>
 </section>
 
-<section class="band" style="background:var(--canvas-2)">
+<section class="band" style="background:var(--canvas-2)" id="daytrips">
   <div class="band-inner">
     <div class="eyebrow">For everyone</div>
     <h2>Day trips from the front door</h2>
     <p>Nearly everything is within half an hour. The eleven old Frisian cities are tiny, pretty and close together, the coast is twenty minutes west, and the bikes-and-boats network means the kids can get around on their own.</p>
     <div class="cards">
-      <div class="card"><div class="meta">Hindeloopen · 15 min</div><h3>Painted town on the dike</h3><p>Hand-painted furniture, a harbour behind the sea wall, and the ice-skating museum that tells the story of the Elfstedentocht, the eleven-cities skating race.</p></div>
-      <div class="card"><div class="meta">Workum · 15 min</div><h3>Jopie Huisman Museum</h3><p>A rag-and-bone man who painted worn-out shoes and old coats with astonishing tenderness. Open daily 11 to 5 in summer. Pair it with coffee on the square.</p></div>
-      <div class="card"><div class="meta">Sloten · 15 min</div><h3>The smallest city</h3><p>A fortified town the size of a village: one canal, one windmill, lime trees along the water. Reachable by boat as well as by car.</p></div>
-      <div class="card"><div class="meta">Stavoren · 20 min</div><h3>Beach and ferry</h3><p>IJsselmeer harbour with a sandy beach at Vrouwezand. A foot-and-bike ferry crosses to Enkhuizen across the water.</p></div>
-      <div class="card"><div class="meta">Lemmer · 25 min</div><h3>Woudagemaal</h3><p>The largest working steam pumping station in the world, a UNESCO site that still fires up when the water gets too high. Open Tuesday to Sunday.</p></div>
-      <div class="card"><div class="meta">Sneek · 25 min</div><h3>Waterpoort and the maritime museum</h3><p>The town gate on the water is the postcard of Friesland. The Fries Scheepvaart Museum covers the boats we will be sailing. Best shopping in the area.</p></div>
-      <div class="card"><div class="meta">Makkum and the Afsluitdijk · 40 min</div><h3>Beach and the big dike</h3><p>Wide sandy beach at Makkum, then a drive out onto the 32 km dike that closed off the sea in 1932, with the Wadden on one side and the IJsselmeer on the other.</p></div>
-      <div class="card"><div class="meta">Harlingen · 45 min</div><h3>Ferry to the islands</h3><p>Fast ferries to Terschelling and Vlieland, car-free Wadden islands with dune beaches. A long day, or an overnight for the shore party.</p></div>
-      <div class="card"><div class="meta">Leeuwarden · 45 min</div><h3>The capital</h3><p>City day with a leaning tower, canals, Aqua Zoo and the Natuurmuseum Fryslân for the kids.</p></div>
-      <div class="card"><div class="meta">Oudemirdum · 10 min</div><h3>Sybrandy's Speelpark</h3><p>Old-fashioned family play park in the woods behind the Gaasterland hills, ten minutes from the house. The easy answer on a cloudy morning.</p></div>
-      <div class="card"><div class="meta">On two wheels</div><h3>Elfstedenroute by bike</h3><p>Flat, signed cycle routes link all eleven cities. The numbered junction network makes a half-day loop simple to plan from the house.</p></div>
-      <div class="card"><div class="meta">Giethoorn · 1 h 15</div><h3>The village without roads</h3><p>Thatched farmhouses on canals, punts instead of cars. Far enough that it deserves its own day, probably with everyone ashore.</p></div>
+      <div class="card"><img src="img/hindeloopen.jpg" alt="The old tide gauge house on the sea dike at Hindeloopen, sheep grazing" width="1280" height="602"><div class="body"><div class="meta">Hindeloopen · 15 min</div><h3>Painted town on the dike</h3><p>Hand-painted furniture, a harbour behind the sea wall, and the ice-skating museum that tells the story of the Elfstedentocht, the eleven-cities skating race.</p><div class="tag"><a href="https://www.schaatsmuseum.nl/">Skating museum</a></div></div></div>
+      <div class="card"><img src="img/workum.jpg" alt="De Merk, the main square of Workum" width="1280" height="960"><div class="body"><div class="meta">Workum · 15 min</div><h3>Jopie Huisman Museum</h3><p>A rag-and-bone man who painted worn-out shoes and old coats with astonishing tenderness. Open daily 11 to 5 in summer. Pair it with coffee on the square.</p><div class="tag"><a href="https://www.jopiehuismanmuseum.com/plan-your-visit">Plan a visit</a></div></div></div>
+      <div class="card"><img src="img/sloten.jpg" alt="Windmill and brick ramparts along the canal at Sloten" width="1280" height="960"><div class="body"><div class="meta">Sloten · 15 min</div><h3>The smallest city</h3><p>A fortified town the size of a village: one canal, one windmill, lime trees along the water. Reachable by boat as well as by car.</p></div></div>
+      <div class="card"><img src="img/stavoren.jpg" alt="Harbour at Stavoren" width="1280" height="336"><div class="body"><div class="meta">Stavoren · 20 min</div><h3>Beach and ferry</h3><p>IJsselmeer harbour with a sandy beach at Vrouwezand. A foot-and-bike ferry crosses to Enkhuizen, so the shore party can meet the crew there for lunch on Wednesday and ride back.</p><div class="tag"><a href="https://www.veerboot.info/">Ferry timetable</a></div></div></div>
+      <div class="card"><img src="img/woudagemaal.jpg" alt="The Woudagemaal steam pumping station at Lemmer" width="1280" height="960"><div class="body"><div class="meta">Lemmer · 25 min</div><h3>Woudagemaal</h3><p>The largest working steam pumping station in the world, a UNESCO site that still fires up when the water gets too high. Open Tuesday to Sunday.</p><div class="tag"><a href="https://www.woudagemaal.nl/">woudagemaal.nl</a></div></div></div>
+      <div class="card"><img src="img/sneek.jpg" alt="The Waterpoort gate in Sneek" width="1280" height="853"><div class="body"><div class="meta">Sneek · 25 min</div><h3>Waterpoort and the maritime museum</h3><p>The town gate on the water is the postcard of Friesland. The Fries Scheepvaart Museum covers the boats we will be sailing. Best shopping in the area.</p><div class="tag"><a href="https://www.friesscheepvaartmuseum.nl/">Fries Scheepvaart Museum</a></div></div></div>
+      <div class="card"><img src="img/afsluitdijk.jpg" alt="The Afsluitdijk stretching across the water" width="1280" height="923"><div class="body"><div class="meta">Makkum and the Afsluitdijk · 40 min</div><h3>Beach and the big dike</h3><p>Wide sandy beach at Makkum, then a drive out onto the 32 km dike that closed off the sea in 1932, with the Wadden on one side and the IJsselmeer on the other.</p><div class="tag"><a href="https://www.deafsluitdijk.nl/en/">About the dike</a></div></div></div>
+      <div class="card"><img src="img/terschelling.jpg" alt="Dunes on Terschelling" width="1280" height="853"><div class="body"><div class="meta">Harlingen · 45 min</div><h3>Ferry to the islands</h3><p>Fast ferries to Terschelling and Vlieland, car-free Wadden islands with dune beaches. A long day, or an overnight for the shore party.</p><div class="tag"><a href="https://www.rederij-doeksen.nl/en">Rederij Doeksen ferries</a></div></div></div>
+      <div class="card"><img src="img/leeuwarden.jpg" alt="The leaning Oldehove tower in Leeuwarden" width="1280" height="957"><div class="body"><div class="meta">Leeuwarden · 45 min</div><h3>The capital</h3><p>City day with a leaning tower, canals, Aqua Zoo and the Natuurmuseum Fryslân for the kids.</p><div class="tag"><a href="https://www.aquazoo.nl/">Aqua Zoo</a> · <a href="https://natuurmuseumfryslan.nl/en/">Natuurmuseum</a></div></div></div>
+      <div class="card"><img src="img/giethoorn.jpg" alt="Canal and thatched houses in Giethoorn" width="1280" height="641"><div class="body"><div class="meta">Giethoorn · 1 h 15</div><h3>The village without roads</h3><p>Thatched farmhouses on canals, punts instead of cars. Far enough that it deserves its own day, probably with everyone ashore.</p></div></div>
+      <div class="card"><div class="body"><div class="meta">Oudemirdum · 10 min</div><h3>Sybrandy's Speelpark</h3><p>Old-fashioned family play park in the woods behind the Gaasterland hills, ten minutes from the house. The easy answer on a cloudy morning.</p><div class="tag"><a href="https://www.sybrandys.nl/">sybrandys.nl</a></div></div></div>
+      <div class="card"><div class="body"><div class="meta">On two wheels</div><h3>Elfstedenroute by bike</h3><p>Flat, signed cycle routes link all eleven cities. The numbered junction network makes a half-day loop simple to plan from the house.</p><div class="tag"><a href="https://www.friesland.nl/en/plan/see-do/to-do/routes/cycling-routes">Routes on friesland.nl</a></div></div></div>
     </div>
   </div>
 </section>
 
-<section class="band water">
-  <div class="band-inner two">
-    <div>
-      <div class="eyebrow">Getting there</div>
-      <h2>Amsterdam to the jetty</h2>
-      <p class="muted">Fly into Amsterdam Schiphol. Gaastmeer is about an hour and twenty minutes north by car along the A6 and A7, or two hours by train and taxi via Leeuwarden. Pick up the house keys Monday from 4 pm.</p>
-    </div>
-    <div>
-      <div class="eyebrow">Who sleeps where</div>
-      <h2>Room for all eight</h2>
-      <p class="muted">Three bedrooms in the house, seven berths on the boat. Tuesday and Wednesday night the sailing crew of six sleeps aboard in whichever harbour they reach, and the two of you have the house, the terrace and the spa to yourselves. Every other night everyone is home.</p>
+<section class="band" id="practical">
+  <div class="band-inner">
+    <div class="eyebrow">Practical</div>
+    <h2>The small print, without the numbers</h2>
+    <div class="facts">
+      <div><div class="k">House</div><p>Check-in Monday from 4 pm, check-out the following Monday by 10:30. Bed and bath linen can be rented from Syperda or brought along. No pets or smoking in Ringwiel.</p></div>
+      <div><div class="k">Boat</div><p>Handover Monday from 3 pm, return Friday morning by 10. Bedding is a sleeping bag or duvet of your own; fitted sheets and pillows are aboard. Sailing area covers the Frisian lakes, the IJsselmeer and the Wadden Sea.</p></div>
+      <div><div class="k">Getting there</div><p>Fly into Amsterdam Schiphol. Gaastmeer is about an hour and twenty minutes north by car along the A6 and A7, or two hours by train and taxi via Leeuwarden.</p></div>
+      <div><div class="k">Who sleeps where</div><p>Three bedrooms in the house, seven berths on the boat. Tuesday night the crew of six sleeps aboard in Stavoren and Wednesday night in Enkhuizen. Every other night everyone is home.</p></div>
+      <div><div class="k">The operator</div><p>Waterrecreatie Syperda, Munkedyk 2, Gaastmeer. House and boat come from the same family firm, one booking, one handover.</p><div class="links"><a href="https://www.waterrecreatiesyperda.com/">waterrecreatiesyperda.com</a><a href="https://www.waterrecreatiesyperda.com/faq-1.html">Their FAQ</a></div></div>
+      <div><div class="k">Weather</div><p>Mid-July in Friesland means long light until after ten at night, water warm enough to swim, and a sailing breeze most afternoons. Bring a rain layer anyway.</p></div>
     </div>
   </div>
 </section>
 
 <footer class="band" style="padding-block:28px">
   <div class="band-inner">
-    <p class="muted">Dates requested with the house and boat owners in Gaastmeer; confirmation to follow. Opening hours and spa calendars are as published in autumn 2026 and worth a second look nearer the time.</p>
+    <p>Dates requested with Syperda; confirmation to follow. Opening hours and spa calendars are as published in autumn 2026 and worth a second look nearer the time.</p>
+    <p>House and boat photographs: Waterrecreatie Syperda. Town photographs from Wikimedia Commons, by Michielverbeek (Heeg, Woudsend; CC BY-SA), Dominicus Johannes Bergsma (Hindeloopen; CC BY-SA), Sebastian Sigler (Workum; CC BY-SA), Reboelje (Sloten; CC BY-SA), Wutsje (Stavoren; CC BY-SA), Gouwenaar (Woudagemaal CC0, Sneek CC BY-SA), C messier (Afsluitdijk, Leeuwarden; CC BY-SA), W. Bulach (Enkhuizen, Zuiderzeemuseum; CC BY-SA), Wauteurz (Terschelling; CC BY-SA), CEphoto Uwe Aranas (Giethoorn; CC BY-SA).</p>
   </div>
 </footer>
 </body>
