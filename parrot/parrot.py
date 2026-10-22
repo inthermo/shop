@@ -4,7 +4,9 @@ Hold Ctrl+Win, speak, release: the transcription is typed at the cursor.
 Fully on-device (faster-whisper small.en, CPU). No API keys, no cloud.
 
 Inspired by https://github.com/digimata/parrot (macOS). This is the
-Windows equivalent: keyboard hook + sounddevice + faster-whisper.
+Windows equivalent: Raw Input key tracking + sounddevice + faster-whisper.
+(Raw Input rather than a keyboard hook so the hotkey still works when a
+full-screen Chrome Remote Desktop tab holds Chrome's keyboard lock.)
 
 Run with pythonw.exe for no console window. Logs to parrot.log next to
 this file. Beeps: high = recording, low = stopped, two rising = ready,
@@ -15,7 +17,9 @@ import ctypes
 import logging
 import os
 import sys
+import threading
 import time
+from ctypes import wintypes
 
 import numpy as np
 import sounddevice as sd
@@ -36,10 +40,131 @@ logging.basicConfig(
 )
 log = logging.getLogger("parrot")
 
+# --- Raw Input key-state tracker ---------------------------------------
+# Chrome's Keyboard Lock (used by Chrome Remote Desktop in full screen)
+# installs a low-level keyboard hook that swallows Ctrl/Win before any
+# other hook sees them, so keyboard.is_pressed() stops working the moment
+# the CRD tab goes full screen. Raw Input (WM_INPUT) is delivered
+# independently of low-level hooks, so we track modifier state from it.
+
+_u32 = ctypes.windll.user32
+_k32 = ctypes.windll.kernel32
+
+WM_INPUT = 0x00FF
+RIDEV_INPUTSINK = 0x00000100
+RID_INPUT = 0x10000003
+RIM_TYPEKEYBOARD = 1
+RI_KEY_BREAK = 1
+VK_CTRL = {0x11, 0xA2, 0xA3}
+VK_WIN = {0x5B, 0x5C}
+
+WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
+                             wintypes.WPARAM, wintypes.LPARAM)
+
+
+class WNDCLASSW(ctypes.Structure):
+    _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", WNDPROC),
+                ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HBRUSH),
+                ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+
+class RAWINPUTDEVICE(ctypes.Structure):
+    _fields_ = [("usUsagePage", wintypes.USHORT), ("usUsage", wintypes.USHORT),
+                ("dwFlags", wintypes.DWORD), ("hwndTarget", wintypes.HWND)]
+
+
+class RAWINPUTHEADER(ctypes.Structure):
+    _fields_ = [("dwType", wintypes.DWORD), ("dwSize", wintypes.DWORD),
+                ("hDevice", wintypes.HANDLE), ("wParam", wintypes.WPARAM)]
+
+
+class RAWKEYBOARD(ctypes.Structure):
+    _fields_ = [("MakeCode", wintypes.USHORT), ("Flags", wintypes.USHORT),
+                ("Reserved", wintypes.USHORT), ("VKey", wintypes.USHORT),
+                ("Message", wintypes.UINT), ("ExtraInformation", wintypes.ULONG)]
+
+
+class RAWINPUT(ctypes.Structure):
+    _fields_ = [("header", RAWINPUTHEADER), ("keyboard", RAWKEYBOARD)]
+
+
+_u32.DefWindowProcW.restype = ctypes.c_ssize_t
+_u32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+_u32.CreateWindowExW.restype = wintypes.HWND
+_u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                 wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+_u32.GetRawInputData.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPVOID,
+                                 ctypes.POINTER(wintypes.UINT), wintypes.UINT]
+_k32.GetModuleHandleW.restype = wintypes.HINSTANCE
+
+
+class RawKeys:
+    """Tracks which virtual keys are physically down, via WM_INPUT."""
+
+    def __init__(self):
+        self.down = set()
+        self.ready = threading.Event()
+        self.error = None
+        self._proc = WNDPROC(self._wndproc)  # keep a reference alive
+        threading.Thread(target=self._run, daemon=True, name="rawinput").start()
+
+    def _wndproc(self, hwnd, msg, wparam, lparam):
+        if msg == WM_INPUT:
+            size = wintypes.UINT(ctypes.sizeof(RAWINPUT))
+            ri = RAWINPUT()
+            got = _u32.GetRawInputData(lparam, RID_INPUT, ctypes.byref(ri),
+                                       ctypes.byref(size), ctypes.sizeof(RAWINPUTHEADER))
+            if got not in (0, 0xFFFFFFFF) and ri.header.dwType == RIM_TYPEKEYBOARD:
+                vk = ri.keyboard.VKey
+                if ri.keyboard.Flags & RI_KEY_BREAK:
+                    self.down.discard(vk)
+                else:
+                    self.down.add(vk)
+        return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+    def _run(self):
+        try:
+            hinst = _k32.GetModuleHandleW(None)
+            wc = WNDCLASSW()
+            wc.lpfnWndProc = self._proc
+            wc.hInstance = hinst
+            wc.lpszClassName = "ParrotRawInput"
+            if not _u32.RegisterClassW(ctypes.byref(wc)):
+                raise ctypes.WinError()
+            hwnd = _u32.CreateWindowExW(0, wc.lpszClassName, "Parrot", 0,
+                                        0, 0, 0, 0, None, None, hinst, None)
+            if not hwnd:
+                raise ctypes.WinError()
+            rid = RAWINPUTDEVICE(0x01, 0x06, RIDEV_INPUTSINK, hwnd)
+            if not _u32.RegisterRawInputDevices(ctypes.byref(rid), 1, ctypes.sizeof(rid)):
+                raise ctypes.WinError()
+        except Exception as e:  # fall back to keyboard.is_pressed
+            self.error = e
+            self.ready.set()
+            return
+        self.ready.set()
+        msg = wintypes.MSG()
+        while _u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            _u32.TranslateMessage(ctypes.byref(msg))
+            _u32.DispatchMessageW(ctypes.byref(msg))
+
+    def ctrl(self):
+        return bool(self.down & VK_CTRL)
+
+    def win(self):
+        return bool(self.down & VK_WIN)
+
+
 WIN_KEYS = ("left windows", "right windows")
+RAW = None  # set in main() once logging is up
 
 
 def win_pressed():
+    if RAW is not None:
+        return RAW.win()
     for k in WIN_KEYS:
         try:
             if keyboard.is_pressed(k):
@@ -49,8 +174,14 @@ def win_pressed():
     return False
 
 
+def ctrl_pressed():
+    if RAW is not None:
+        return RAW.ctrl()
+    return keyboard.is_pressed("ctrl")
+
+
 def combo_pressed():
-    return keyboard.is_pressed("ctrl") and win_pressed()
+    return ctrl_pressed() and win_pressed()
 
 
 def foreground_title():
@@ -85,7 +216,15 @@ def beep(freq, ms):
 
 
 def main():
+    global RAW
     log.info("starting; loading model %s", MODEL_NAME)
+    rk = RawKeys()
+    rk.ready.wait(5)
+    if rk.error is None and rk.ready.is_set():
+        RAW = rk
+        log.info("raw input key tracking active")
+    else:
+        log.warning("raw input unavailable (%s); using keyboard hook", rk.error)
     from faster_whisper import WhisperModel  # slow import; after logging is up
 
     model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
@@ -152,7 +291,8 @@ def main():
 
         # Never type while modifiers are still down — Ctrl+<letters> would
         # fire shortcuts in the focused app.
-        while combo_pressed() or keyboard.is_pressed("ctrl") or win_pressed():
+        t_wait = time.time()
+        while (ctrl_pressed() or win_pressed()) and time.time() - t_wait < 3:
             time.sleep(0.02)
         time.sleep(0.12)
         type_text(text + " ")
