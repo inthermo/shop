@@ -203,7 +203,9 @@ function home() {
       return `<button class="set" data-s="${s.id}"><b>${s.title}</b><small>${n} Q · ${s.minutes} min${b ? ` · best ${b.pct}%` : ''}</small></button>`;
     }).join('') + '</div></div>';
   }
-  h += `<div class="card"><h2>Review my misses</h2><p class="muted">${misses.length} question${misses.length === 1 ? '' : 's'} missed or skipped. A question leaves this list once you get it right.</p>
+  h += `<div class="card"><h2>🎤 Hotchkiss interview prep</h2><p class="muted">What the admission office publishes about the interview, likely questions with space for your notes, a mock-interview drill, and a day-of checklist.</p>
+    <a class="primary" href="interview/" style="display:inline-block;text-decoration:none">Open interview prep</a></div>
+  <div class="card"><h2>Review my misses</h2><p class="muted">${misses.length} question${misses.length === 1 ? '' : 's'} missed or skipped. A question leaves this list once you get it right.</p>
     <div class="row"><button class="primary" id="rev" ${misses.length ? '' : 'disabled'}>Review ${Math.min(misses.length, 20)} misses</button>
     <button class="ghost" id="hist">Score history</button><button class="ghost" id="lb">🏆 Leaderboard</button></div></div>
     <p class="muted">Practice only. These are original questions written in the style of the real SSAT. Official practice tests are the benchmark. Progress is saved under your initials and syncs across devices.</p>`;
