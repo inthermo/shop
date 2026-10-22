@@ -61,14 +61,20 @@ def foreground_title():
 
 
 def type_text(text):
-    # Remote-desktop clients (Chrome Remote Desktop) can't forward the raw
-    # unicode events keyboard.write uses by default on Windows (VK_PACKET) —
-    # the remote session never sees them. When the focused window is CRD,
-    # type with real virtual-key presses instead, paced so none get dropped.
-    if "Chrome Remote Desktop" in foreground_title():
+    # keyboard.write defaults to unicode VK_PACKET events on Windows, which
+    # remote-desktop clients (Chrome Remote Desktop, RDP) do not forward -- the
+    # remote session never sees them. Real virtual-key presses, paced so none
+    # drop, work both locally and through any remote client, so use them for
+    # all plain-ASCII text; fall back to unicode only for characters the US
+    # layout cannot produce with key presses.
+    title = foreground_title()
+    if text.isascii():
+        mode = "vk"
         keyboard.write(text, delay=0.01, exact=False)
     else:
+        mode = "unicode"
         keyboard.write(text)
+    log.info("typed (%s) into %r", mode, title[:80])
 
 
 def beep(freq, ms):
