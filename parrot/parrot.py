@@ -2,6 +2,8 @@
 
 Hold Ctrl+Win, speak, release: the transcription is typed at the cursor.
 Fully on-device (faster-whisper small.en, CPU). No API keys, no cloud.
+Slow PC? Set PARROT_SERVER to a parrot_server.py URL on a faster machine
+on your tailnet and the audio is transcribed there instead.
 
 Inspired by https://github.com/digimata/parrot (macOS). This is the
 Windows equivalent: Raw Input key tracking + sounddevice + faster-whisper.
@@ -25,12 +27,19 @@ import numpy as np
 import sounddevice as sd
 import keyboard
 import winsound
+import json
+import urllib.request
 
 SAMPLE_RATE = 16000
 MIN_SECONDS = 0.35          # ignore accidental taps
 # Override per machine with a user env var PARROT_MODEL (e.g. "base.en" on slow PCs,
 # ~3x faster than small.en with slightly lower accuracy; "tiny.en" faster still).
 MODEL_NAME = os.environ.get("PARROT_MODEL", "small.en")  # small.en = ~250 MB download on first run
+# Slow PCs: set user env var PARROT_SERVER to a parrot_server.py URL, e.g.
+# https://inthermopc.tail881969.ts.net/parrot — audio is transcribed there
+# instead of locally (local model loads lazily only if the server fails).
+SERVER = os.environ.get("PARROT_SERVER", "").rstrip("/")
+SERVER_TIMEOUT = float(os.environ.get("PARROT_SERVER_TIMEOUT", "20"))
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -215,6 +224,19 @@ def beep(freq, ms):
         pass
 
 
+def server_transcribe(audio):
+    """POST float32 PCM to the Parrot server; returns text or raises."""
+    req = urllib.request.Request(
+        SERVER + "/transcribe", data=audio.astype(np.float32).tobytes(), method="POST",
+        headers={"Content-Type": "application/octet-stream", "X-Sample-Rate": str(SAMPLE_RATE)},
+    )
+    with urllib.request.urlopen(req, timeout=SERVER_TIMEOUT) as r:
+        out = json.loads(r.read().decode("utf-8"))
+    if not out.get("ok"):
+        raise RuntimeError(out.get("error") or "server error")
+    return out.get("text", "").strip()
+
+
 def main():
     global RAW
     log.info("starting; loading model %s", MODEL_NAME)
@@ -225,12 +247,29 @@ def main():
         log.info("raw input key tracking active")
     else:
         log.warning("raw input unavailable (%s); using keyboard hook", rk.error)
-    from faster_whisper import WhisperModel  # slow import; after logging is up
+    model = None
 
-    model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
-    # Warm up so the first real dictation isn't slow.
-    model.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), language="en")
-    log.info("model ready")
+    def local_model():
+        nonlocal model
+        if model is None:
+            from faster_whisper import WhisperModel  # slow import; after logging is up
+
+            log.info("loading local model %s", MODEL_NAME)
+            model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
+            # Warm up so the first real dictation isn't slow.
+            model.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), language="en")
+            log.info("model ready")
+        return model
+
+    if SERVER:
+        try:
+            with urllib.request.urlopen(SERVER + "/healthz", timeout=10) as r:
+                log.info("using server %s: %s", SERVER, r.read(200).decode("utf-8", "replace"))
+        except Exception as e:  # noqa: BLE001
+            log.warning("server %s unreachable (%s); loading local model", SERVER, e)
+            local_model()
+    else:
+        local_model()
     beep(700, 90)
     beep(1000, 90)
 
@@ -273,17 +312,25 @@ def main():
         if seconds < MIN_SECONDS:
             continue
 
-        try:
-            t0 = time.time()
-            segments, _ = model.transcribe(
-                audio, language="en", beam_size=1, vad_filter=True
-            )
-            text = " ".join(s.text.strip() for s in segments).strip()
-            log.info("%.1fs audio -> %.1fs transcribe: %r", seconds, time.time() - t0, text)
-        except Exception:
-            log.exception("transcription failed")
-            beep(200, 400)
-            continue
+        t0 = time.time()
+        text = None
+        if SERVER:
+            try:
+                text = server_transcribe(audio)
+                log.info("%.1fs audio -> %.1fs server: %r", seconds, time.time() - t0, text)
+            except Exception as e:  # noqa: BLE001
+                log.warning("server transcribe failed (%s); falling back to local", e)
+        if text is None:
+            try:
+                segments, _ = local_model().transcribe(
+                    audio, language="en", beam_size=1, vad_filter=True
+                )
+                text = " ".join(s.text.strip() for s in segments).strip()
+                log.info("%.1fs audio -> %.1fs transcribe: %r", seconds, time.time() - t0, text)
+            except Exception:
+                log.exception("transcription failed")
+                beep(200, 400)
+                continue
 
         if not text:
             beep(300, 150)
