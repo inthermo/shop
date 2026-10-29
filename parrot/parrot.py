@@ -40,12 +40,16 @@ MODEL_NAME = os.environ.get("PARROT_MODEL", "small.en")  # small.en = ~250 MB do
 # instead of locally (local model loads lazily only if the server fails).
 SERVER = os.environ.get("PARROT_SERVER", "").rstrip("/")
 SERVER_TIMEOUT = float(os.environ.get("PARROT_SERVER_TIMEOUT", "20"))
-# Mouse push-to-talk: hold a mouse side button instead of Ctrl+Win. Needed in a
+# Mouse push-to-talk: hold a mouse button instead of Ctrl+Win. Needed in a
 # full-screen Chrome Remote Desktop tab, where Chrome's keyboard lock swallows
 # every key (even from Raw Input) but never mouse buttons. PARROT_MOUSE_BUTTON =
-# comma list of 3 (middle), 4 (back/side) and/or 5 (forward/side); "0" disables.
-_mb = os.environ.get("PARROT_MOUSE_BUTTON", "4,5")
+# comma list of 3 (middle/wheel click, default), 4 (back/side) and/or 5
+# (forward/side); "0" disables. While Parrot runs, the chosen button's clicks are
+# swallowed by a low-level mouse hook so the focused app (and the remote desktop
+# behind it) never sees them; PARROT_MOUSE_SWALLOW=0 lets them through.
+_mb = os.environ.get("PARROT_MOUSE_BUTTON", "3")
 MOUSE_BUTTONS = {int(x) for x in _mb.replace(";", ",").split(",") if x.strip().isdigit()} - {0}
+MOUSE_SWALLOW = os.environ.get("PARROT_MOUSE_SWALLOW", "1") != "0"
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -78,6 +82,17 @@ VK_WIN = {0x5B, 0x5C}
 
 WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
                              wintypes.WPARAM, wintypes.LPARAM)
+HOOKPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+WH_MOUSE_LL = 14
+WM_MBUTTONDOWN, WM_MBUTTONUP = 0x0207, 0x0208
+WM_XBUTTONDOWN, WM_XBUTTONUP = 0x020B, 0x020C
+LLMHF_INJECTED = 0x01
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [("pt", wintypes.POINT), ("mouseData", wintypes.DWORD),
+                ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t)]
 
 
 class WNDCLASSW(ctypes.Structure):
@@ -128,6 +143,10 @@ _u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCW
 _u32.GetRawInputData.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPVOID,
                                  ctypes.POINTER(wintypes.UINT), wintypes.UINT]
 _k32.GetModuleHandleW.restype = wintypes.HINSTANCE
+_u32.SetWindowsHookExW.restype = wintypes.HHOOK
+_u32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+_u32.CallNextHookEx.restype = ctypes.c_ssize_t
+_u32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
 
 
 class RawKeys:
@@ -138,7 +157,10 @@ class RawKeys:
         self.mouse_down = set()  # mouse button numbers (3/4/5) currently held
         self.ready = threading.Event()
         self.error = None
+        self.hook = None          # WH_MOUSE_LL handle when swallowing is active
+        self.hook_error = None
         self._proc = WNDPROC(self._wndproc)  # keep a reference alive
+        self._mproc = HOOKPROC(self._mouseproc)
         threading.Thread(target=self._run, daemon=True, name="rawinput").start()
 
     def _wndproc(self, hwnd, msg, wparam, lparam):
@@ -164,6 +186,25 @@ class RawKeys:
                         self.mouse_down.discard(n)
         return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
+    def _mouseproc(self, ncode, wparam, lparam):
+        # Low-level mouse hook: track the push-to-talk button and swallow its
+        # clicks so the focused app never acts on them. Keep this trivial -
+        # Windows drops hooks that take too long.
+        if ncode == 0 and wparam in (WM_MBUTTONDOWN, WM_MBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP):
+            info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            if not info.flags & LLMHF_INJECTED:
+                if wparam in (WM_MBUTTONDOWN, WM_MBUTTONUP):
+                    n = 3
+                else:
+                    n = 3 + ((info.mouseData >> 16) & 0xFFFF)  # XBUTTON1 -> 4, XBUTTON2 -> 5
+                if n in MOUSE_BUTTONS:
+                    if wparam in (WM_MBUTTONDOWN, WM_XBUTTONDOWN):
+                        self.mouse_down.add(n)
+                    else:
+                        self.mouse_down.discard(n)
+                    return 1
+        return _u32.CallNextHookEx(None, ncode, wparam, lparam)
+
     def _run(self):
         try:
             hinst = _k32.GetModuleHandleW(None)
@@ -185,6 +226,10 @@ class RawKeys:
             self.error = e
             self.ready.set()
             return
+        if MOUSE_BUTTONS and MOUSE_SWALLOW:
+            self.hook = _u32.SetWindowsHookExW(WH_MOUSE_LL, self._mproc, _k32.GetModuleHandleW(None), 0)
+            if not self.hook:
+                self.hook_error = ctypes.WinError()
         self.ready.set()
         msg = wintypes.MSG()
         while _u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
@@ -282,8 +327,11 @@ def main():
     rk.ready.wait(5)
     if rk.error is None and rk.ready.is_set():
         RAW = rk
-        log.info("raw input key tracking active; mouse push-to-talk buttons %s",
-                 sorted(MOUSE_BUTTONS) or "off")
+        log.info("raw input key tracking active; mouse push-to-talk buttons %s (%s)",
+                 sorted(MOUSE_BUTTONS) or "off",
+                 "clicks swallowed" if rk.hook else "clicks pass through")
+        if rk.hook_error:
+            log.warning("mouse hook failed (%s); button clicks will reach the focused app", rk.hook_error)
     else:
         log.warning("raw input unavailable (%s); using keyboard hook", rk.error)
     model = None
