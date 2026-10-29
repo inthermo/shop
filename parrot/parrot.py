@@ -44,12 +44,16 @@ SERVER_TIMEOUT = float(os.environ.get("PARROT_SERVER_TIMEOUT", "20"))
 # full-screen Chrome Remote Desktop tab, where Chrome's keyboard lock swallows
 # every key (even from Raw Input) but never mouse buttons. PARROT_MOUSE_BUTTON =
 # comma list of 3 (middle/wheel click, default), 4 (back/side) and/or 5
-# (forward/side); "0" disables. While Parrot runs, the chosen button's clicks are
-# swallowed by a low-level mouse hook so the focused app (and the remote desktop
-# behind it) never sees them; PARROT_MOUSE_SWALLOW=0 lets them through.
+# (forward/side); "0" disables. A low-level mouse hook intercepts the chosen
+# button: a quick press (shorter than PARROT_MOUSE_HOLD_MS, default 250) is
+# replayed as a normal click, so wheel-click still opens links in new tabs and
+# closes tabs; holding it longer records. PARROT_MOUSE_HOLD_MS=0 = every press
+# records and clicks never reach the app. PARROT_MOUSE_SWALLOW=0 removes the
+# hook entirely (buttons tracked via Raw Input, clicks always reach the app).
 _mb = os.environ.get("PARROT_MOUSE_BUTTON", "3")
 MOUSE_BUTTONS = {int(x) for x in _mb.replace(";", ",").split(",") if x.strip().isdigit()} - {0}
 MOUSE_SWALLOW = os.environ.get("PARROT_MOUSE_SWALLOW", "1") != "0"
+MOUSE_HOLD = float(os.environ.get("PARROT_MOUSE_HOLD_MS", "250")) / 1000.0
 # Seconds between typed keys: local apps vs. a remote-desktop window (which
 # drops keys typed faster than ~30 ms apart).
 TYPE_DELAY = float(os.environ.get("PARROT_TYPE_DELAY", "0.01"))
@@ -91,6 +95,9 @@ WH_MOUSE_LL = 14
 WM_MBUTTONDOWN, WM_MBUTTONUP = 0x0207, 0x0208
 WM_XBUTTONDOWN, WM_XBUTTONUP = 0x020B, 0x020C
 LLMHF_INJECTED = 0x01
+WM_PARROT_CLICK = 0x0400 + 7  # WM_USER+7: replay a swallowed short press as a click
+# mouse_event flags for replaying a click: (down, up, mouseData) per button number
+MOUSE_EVENT = {3: (0x0020, 0x0040, 0), 4: (0x0080, 0x0100, 1), 5: (0x0080, 0x0100, 2)}
 
 
 class MSLLHOOKSTRUCT(ctypes.Structure):
@@ -158,7 +165,8 @@ class RawKeys:
 
     def __init__(self):
         self.down = set()
-        self.mouse_down = set()  # mouse button numbers (3/4/5) currently held
+        self.mouse_down = {}     # mouse button number (3/4/5) -> time.monotonic() when pressed
+        self.hwnd = None
         self.ready = threading.Event()
         self.error = None
         self.hook = None          # WH_MOUSE_LL handle when swallowing is active
@@ -181,19 +189,30 @@ class RawKeys:
                     self.down.discard(vk)
                 else:
                     self.down.add(vk)
-            elif ri.header.dwType == RIM_TYPEMOUSE:
+            elif ri.header.dwType == RIM_TYPEMOUSE and not self.hook:
+                # Backup state source only when the hook isn't running (the
+                # hook sees the same events, and raw input would also see the
+                # replayed clicks).
                 bf = ri.data.mouse.usButtonFlags
                 for n, (dn, up) in MOUSE_FLAGS.items():
                     if bf & dn:
-                        self.mouse_down.add(n)
+                        self.mouse_down.setdefault(n, time.monotonic())
                     if bf & up:
-                        self.mouse_down.discard(n)
+                        self.mouse_down.pop(n, None)
+        elif msg == WM_PARROT_CLICK:
+            # Short press: replay it as an injected click (the hook lets
+            # injected events through), so the app gets a normal click.
+            dn, up, data = MOUSE_EVENT[int(wparam)]
+            _u32.mouse_event(dn, 0, 0, data, 0)
+            _u32.mouse_event(up, 0, 0, data, 0)
+            return 0
         return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _mouseproc(self, ncode, wparam, lparam):
         # Low-level mouse hook: track the push-to-talk button and swallow its
-        # clicks so the focused app never acts on them. Keep this trivial -
-        # Windows drops hooks that take too long.
+        # events; a press released before MOUSE_HOLD is replayed as a click
+        # from the message loop. Keep this trivial - Windows drops hooks that
+        # take too long.
         if ncode == 0 and wparam in (WM_MBUTTONDOWN, WM_MBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP):
             info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
             if not info.flags & LLMHF_INJECTED:
@@ -203,9 +222,11 @@ class RawKeys:
                     n = 3 + ((info.mouseData >> 16) & 0xFFFF)  # XBUTTON1 -> 4, XBUTTON2 -> 5
                 if n in MOUSE_BUTTONS:
                     if wparam in (WM_MBUTTONDOWN, WM_XBUTTONDOWN):
-                        self.mouse_down.add(n)
+                        self.mouse_down.setdefault(n, time.monotonic())
                     else:
-                        self.mouse_down.discard(n)
+                        t = self.mouse_down.pop(n, None)
+                        if t is not None and MOUSE_HOLD and time.monotonic() - t < MOUSE_HOLD:
+                            _u32.PostMessageW(self.hwnd, WM_PARROT_CLICK, n, 0)
                     return 1
         return _u32.CallNextHookEx(None, ncode, wparam, lparam)
 
@@ -222,6 +243,7 @@ class RawKeys:
                                         0, 0, 0, 0, None, None, hinst, None)
             if not hwnd:
                 raise ctypes.WinError()
+            self.hwnd = hwnd
             rids = (RAWINPUTDEVICE * 2)(RAWINPUTDEVICE(0x01, 0x06, RIDEV_INPUTSINK, hwnd),
                                         RAWINPUTDEVICE(0x01, 0x02, RIDEV_INPUTSINK, hwnd))
             if not _u32.RegisterRawInputDevices(rids, 2, ctypes.sizeof(RAWINPUTDEVICE)):
@@ -247,7 +269,9 @@ class RawKeys:
         return bool(self.down & VK_WIN)
 
     def mouse(self):
-        return bool(self.mouse_down & MOUSE_BUTTONS)
+        # Held long enough to count as push-to-talk (short presses are clicks).
+        now = time.monotonic()
+        return any(now - t >= MOUSE_HOLD for n, t in list(self.mouse_down.items()) if n in MOUSE_BUTTONS)
 
 
 WIN_KEYS = ("left windows", "right windows")
@@ -337,7 +361,8 @@ def main():
         RAW = rk
         log.info("raw input key tracking active; mouse push-to-talk buttons %s (%s)",
                  sorted(MOUSE_BUTTONS) or "off",
-                 "clicks swallowed" if rk.hook else "clicks pass through")
+                 ("hold %d ms = record, shorter = normal click" % (MOUSE_HOLD * 1000)) if rk.hook and MOUSE_HOLD
+                 else "clicks swallowed" if rk.hook else "clicks pass through")
         if rk.hook_error:
             log.warning("mouse hook failed (%s); button clicks will reach the focused app", rk.hook_error)
     else:
