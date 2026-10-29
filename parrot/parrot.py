@@ -40,6 +40,12 @@ MODEL_NAME = os.environ.get("PARROT_MODEL", "small.en")  # small.en = ~250 MB do
 # instead of locally (local model loads lazily only if the server fails).
 SERVER = os.environ.get("PARROT_SERVER", "").rstrip("/")
 SERVER_TIMEOUT = float(os.environ.get("PARROT_SERVER_TIMEOUT", "20"))
+# Mouse push-to-talk: hold a mouse side button instead of Ctrl+Win. Needed in a
+# full-screen Chrome Remote Desktop tab, where Chrome's keyboard lock swallows
+# every key (even from Raw Input) but never mouse buttons. PARROT_MOUSE_BUTTON =
+# comma list of 3 (middle), 4 (back/side) and/or 5 (forward/side); "0" disables.
+_mb = os.environ.get("PARROT_MOUSE_BUTTON", "4,5")
+MOUSE_BUTTONS = {int(x) for x in _mb.replace(";", ",").split(",") if x.strip().isdigit()} - {0}
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -62,7 +68,10 @@ _k32 = ctypes.windll.kernel32
 WM_INPUT = 0x00FF
 RIDEV_INPUTSINK = 0x00000100
 RID_INPUT = 0x10000003
+RIM_TYPEMOUSE = 0
 RIM_TYPEKEYBOARD = 1
+# RAWMOUSE.usButtonFlags bits: (down, up) per button number
+MOUSE_FLAGS = {3: (0x0010, 0x0020), 4: (0x0040, 0x0080), 5: (0x0100, 0x0200)}
 RI_KEY_BREAK = 1
 VK_CTRL = {0x11, 0xA2, 0xA3}
 VK_WIN = {0x5B, 0x5C}
@@ -95,8 +104,19 @@ class RAWKEYBOARD(ctypes.Structure):
                 ("Message", wintypes.UINT), ("ExtraInformation", wintypes.ULONG)]
 
 
+class RAWMOUSE(ctypes.Structure):
+    _fields_ = [("usFlags", wintypes.USHORT), ("_pad", wintypes.USHORT),
+                ("usButtonFlags", wintypes.USHORT), ("usButtonData", wintypes.USHORT),
+                ("ulRawButtons", wintypes.ULONG), ("lLastX", wintypes.LONG),
+                ("lLastY", wintypes.LONG), ("ulExtraInformation", wintypes.ULONG)]
+
+
+class RAWDATA(ctypes.Union):
+    _fields_ = [("keyboard", RAWKEYBOARD), ("mouse", RAWMOUSE)]
+
+
 class RAWINPUT(ctypes.Structure):
-    _fields_ = [("header", RAWINPUTHEADER), ("keyboard", RAWKEYBOARD)]
+    _fields_ = [("header", RAWINPUTHEADER), ("data", RAWDATA)]
 
 
 _u32.DefWindowProcW.restype = ctypes.c_ssize_t
@@ -115,6 +135,7 @@ class RawKeys:
 
     def __init__(self):
         self.down = set()
+        self.mouse_down = set()  # mouse button numbers (3/4/5) currently held
         self.ready = threading.Event()
         self.error = None
         self._proc = WNDPROC(self._wndproc)  # keep a reference alive
@@ -126,12 +147,21 @@ class RawKeys:
             ri = RAWINPUT()
             got = _u32.GetRawInputData(lparam, RID_INPUT, ctypes.byref(ri),
                                        ctypes.byref(size), ctypes.sizeof(RAWINPUTHEADER))
-            if got not in (0, 0xFFFFFFFF) and ri.header.dwType == RIM_TYPEKEYBOARD:
-                vk = ri.keyboard.VKey
-                if ri.keyboard.Flags & RI_KEY_BREAK:
+            if got in (0, 0xFFFFFFFF):
+                pass
+            elif ri.header.dwType == RIM_TYPEKEYBOARD:
+                vk = ri.data.keyboard.VKey
+                if ri.data.keyboard.Flags & RI_KEY_BREAK:
                     self.down.discard(vk)
                 else:
                     self.down.add(vk)
+            elif ri.header.dwType == RIM_TYPEMOUSE:
+                bf = ri.data.mouse.usButtonFlags
+                for n, (dn, up) in MOUSE_FLAGS.items():
+                    if bf & dn:
+                        self.mouse_down.add(n)
+                    if bf & up:
+                        self.mouse_down.discard(n)
         return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _run(self):
@@ -147,8 +177,9 @@ class RawKeys:
                                         0, 0, 0, 0, None, None, hinst, None)
             if not hwnd:
                 raise ctypes.WinError()
-            rid = RAWINPUTDEVICE(0x01, 0x06, RIDEV_INPUTSINK, hwnd)
-            if not _u32.RegisterRawInputDevices(ctypes.byref(rid), 1, ctypes.sizeof(rid)):
+            rids = (RAWINPUTDEVICE * 2)(RAWINPUTDEVICE(0x01, 0x06, RIDEV_INPUTSINK, hwnd),
+                                        RAWINPUTDEVICE(0x01, 0x02, RIDEV_INPUTSINK, hwnd))
+            if not _u32.RegisterRawInputDevices(rids, 2, ctypes.sizeof(RAWINPUTDEVICE)):
                 raise ctypes.WinError()
         except Exception as e:  # fall back to keyboard.is_pressed
             self.error = e
@@ -165,6 +196,9 @@ class RawKeys:
 
     def win(self):
         return bool(self.down & VK_WIN)
+
+    def mouse(self):
+        return bool(self.mouse_down & MOUSE_BUTTONS)
 
 
 WIN_KEYS = ("left windows", "right windows")
@@ -189,8 +223,12 @@ def ctrl_pressed():
     return keyboard.is_pressed("ctrl")
 
 
+def mouse_pressed():
+    return RAW is not None and RAW.mouse()
+
+
 def combo_pressed():
-    return ctrl_pressed() and win_pressed()
+    return (ctrl_pressed() and win_pressed()) or mouse_pressed()
 
 
 def foreground_title():
@@ -244,7 +282,8 @@ def main():
     rk.ready.wait(5)
     if rk.error is None and rk.ready.is_set():
         RAW = rk
-        log.info("raw input key tracking active")
+        log.info("raw input key tracking active; mouse push-to-talk buttons %s",
+                 sorted(MOUSE_BUTTONS) or "off")
     else:
         log.warning("raw input unavailable (%s); using keyboard hook", rk.error)
     model = None
@@ -278,10 +317,13 @@ def main():
             time.sleep(0.02)
             continue
 
-        # A key event while Win is held stops Windows opening the Start
-        # menu when Win is released.
-        keyboard.press_and_release("f24")
-        log.info("recording; foreground %r", foreground_title()[:60])
+        via_mouse = mouse_pressed()
+        if not via_mouse:
+            # A key event while Win is held stops Windows opening the Start
+            # menu when Win is released.
+            keyboard.press_and_release("f24")
+        log.info("recording (%s); foreground %r", "mouse" if via_mouse else "ctrl+win",
+                 foreground_title()[:60])
 
         frames = []
 
