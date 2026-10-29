@@ -58,6 +58,11 @@ MOUSE_HOLD = float(os.environ.get("PARROT_MOUSE_HOLD_MS", "250")) / 1000.0
 # drops keys typed faster than ~30 ms apart).
 TYPE_DELAY = float(os.environ.get("PARROT_TYPE_DELAY", "0.01"))
 REMOTE_TYPE_DELAY = float(os.environ.get("PARROT_REMOTE_TYPE_DELAY", "0.035"))
+# Foreground window titles (substring, case-insensitive) that mean "typing into
+# a remote desktop" -> slow pacing. A full-screen Chrome Remote Desktop tab is
+# titled after the remote machine ("InthermoPC - Google Chrome"), not "Remote Desktop".
+REMOTE_TITLES = [t.strip().lower() for t in
+                 os.environ.get("PARROT_REMOTE_TITLES", "remote desktop,inthermopc").split(",") if t.strip()]
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -321,7 +326,7 @@ def type_text(text):
     title = foreground_title()
     # Remote-desktop clients drop keys that arrive too fast (10 ms pacing lost
     # letters through full-screen Chrome Remote Desktop), so pace slower there.
-    remote = "remote desktop" in title.lower()
+    remote = any(t in title.lower() for t in REMOTE_TITLES)
     delay = REMOTE_TYPE_DELAY if remote else TYPE_DELAY
     if text.isascii():
         mode = "vk %d ms" % round(delay * 1000)
