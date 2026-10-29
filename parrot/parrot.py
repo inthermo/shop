@@ -281,6 +281,7 @@ def main():
         # A key event while Win is held stops Windows opening the Start
         # menu when Win is released.
         keyboard.press_and_release("f24")
+        log.info("recording; foreground %r", foreground_title()[:60])
 
         frames = []
 
@@ -306,10 +307,12 @@ def main():
         beep(500, 60)
 
         if not frames:
+            log.info("no audio frames captured")
             continue
         audio = np.concatenate(frames).flatten()
         seconds = len(audio) / SAMPLE_RATE
         if seconds < MIN_SECONDS:
+            log.info("%.1fs audio too short; ignored", seconds)
             continue
 
         t0 = time.time()
@@ -333,6 +336,7 @@ def main():
                 continue
 
         if not text:
+            log.info("empty transcript")
             beep(300, 150)
             continue
 
