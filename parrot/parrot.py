@@ -50,6 +50,10 @@ SERVER_TIMEOUT = float(os.environ.get("PARROT_SERVER_TIMEOUT", "20"))
 _mb = os.environ.get("PARROT_MOUSE_BUTTON", "3")
 MOUSE_BUTTONS = {int(x) for x in _mb.replace(";", ",").split(",") if x.strip().isdigit()} - {0}
 MOUSE_SWALLOW = os.environ.get("PARROT_MOUSE_SWALLOW", "1") != "0"
+# Seconds between typed keys: local apps vs. a remote-desktop window (which
+# drops keys typed faster than ~30 ms apart).
+TYPE_DELAY = float(os.environ.get("PARROT_TYPE_DELAY", "0.01"))
+REMOTE_TYPE_DELAY = float(os.environ.get("PARROT_REMOTE_TYPE_DELAY", "0.035"))
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -291,9 +295,13 @@ def type_text(text):
     # all plain-ASCII text; fall back to unicode only for characters the US
     # layout cannot produce with key presses.
     title = foreground_title()
+    # Remote-desktop clients drop keys that arrive too fast (10 ms pacing lost
+    # letters through full-screen Chrome Remote Desktop), so pace slower there.
+    remote = "remote desktop" in title.lower()
+    delay = REMOTE_TYPE_DELAY if remote else TYPE_DELAY
     if text.isascii():
-        mode = "vk"
-        keyboard.write(text, delay=0.01, exact=False)
+        mode = "vk %d ms" % round(delay * 1000)
+        keyboard.write(text, delay=delay, exact=False)
     else:
         mode = "unicode"
         keyboard.write(text)
