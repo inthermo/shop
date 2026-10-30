@@ -74,14 +74,14 @@ REMOTE_TITLES = [t.strip().lower() for t in
 # began); pausing lets the client's event queue drain.
 REMOTE_CHUNK = int(os.environ.get("PARROT_REMOTE_CHUNK", "24"))
 REMOTE_CHUNK_PAUSE = float(os.environ.get("PARROT_REMOTE_CHUNK_PAUSE_MS", "120")) / 1000.0
-# Chunking did not stop the drops (again 10/30 05:30:43, mid-typing), so remote
-# text is pasted by default: put it on the clipboard (CRD syncs the client
-# clipboard to the host), wait for the sync, send one Ctrl+V. "type" = old path.
-REMOTE_MODE = os.environ.get("PARROT_REMOTE_MODE", "paste").strip().lower()
-REMOTE_PASTE_WAIT = float(os.environ.get("PARROT_REMOTE_PASTE_WAIT_MS", "400")) / 1000.0
-# keyboard.send("ctrl+v") fires Ctrl and V back to back; CRD lost the Ctrl and
-# the host got a bare "v". Hold Ctrl this long around the V press.
-PASTE_KEY_DELAY = float(os.environ.get("PARROT_PASTE_KEY_DELAY_MS", "80")) / 1000.0
+# Chunking did not stop the drops (again 10/30 05:30:43, mid-typing), and
+# clipboard paste fails too (CRD only syncs the client clipboard when its tab
+# gains focus, so Ctrl+V pasted stale text). So with PARROT_SERVER set, remote
+# text goes to the server, which types it on the host itself -- no keystrokes
+# cross CRD. PARROT_TYPE_TOKEN must match the server's type_token.txt.
+# "type" = old chunked path (also the fallback if the server call fails).
+REMOTE_MODE = os.environ.get("PARROT_REMOTE_MODE", "host").strip().lower()
+TYPE_TOKEN = os.environ.get("PARROT_TYPE_TOKEN", "").strip()
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -387,83 +387,6 @@ def foreground_title():
     return buf.value
 
 
-CF_UNICODETEXT = 13
-_k32.GlobalAlloc.restype = wintypes.HGLOBAL
-_k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
-_k32.GlobalLock.restype = ctypes.c_void_p
-_k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
-_k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-_u32.GetClipboardData.restype = wintypes.HANDLE
-_u32.SetClipboardData.restype = wintypes.HANDLE
-_u32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
-
-
-def _open_clipboard():
-    for _ in range(10):
-        if _u32.OpenClipboard(None):
-            return True
-        time.sleep(0.05)
-    return False
-
-
-def get_clipboard():
-    """Current clipboard text, or None (empty / not text / busy)."""
-    if not _open_clipboard():
-        return None
-    try:
-        h = _u32.GetClipboardData(CF_UNICODETEXT)
-        if not h:
-            return None
-        p = _k32.GlobalLock(h)
-        try:
-            return ctypes.wstring_at(p) if p else None
-        finally:
-            _k32.GlobalUnlock(h)
-    finally:
-        _u32.CloseClipboard()
-
-
-def set_clipboard(text):
-    if not _open_clipboard():
-        raise RuntimeError("clipboard busy")
-    try:
-        _u32.EmptyClipboard()
-        data = ctypes.create_unicode_buffer(text)
-        size = ctypes.sizeof(data)
-        h = _k32.GlobalAlloc(0x0002, size)  # GMEM_MOVEABLE; owned by the clipboard after Set
-        p = _k32.GlobalLock(h)
-        ctypes.memmove(p, data, size)
-        _k32.GlobalUnlock(h)
-        if not _u32.SetClipboardData(CF_UNICODETEXT, h):
-            raise RuntimeError("SetClipboardData failed")
-    finally:
-        _u32.CloseClipboard()
-
-
-def paste_text(text):
-    """Paste via clipboard + one Ctrl+V; puts the old clipboard text back after."""
-    old = get_clipboard()
-    set_clipboard(text)
-    time.sleep(REMOTE_PASTE_WAIT)  # let the remote client sync the clipboard to the host
-    keyboard.press("ctrl")
-    try:
-        time.sleep(PASTE_KEY_DELAY)
-        keyboard.press("v")
-        time.sleep(PASTE_KEY_DELAY)
-        keyboard.release("v")
-        time.sleep(PASTE_KEY_DELAY)
-    finally:
-        keyboard.release("ctrl")
-    if old is not None:
-        def restore():
-            time.sleep(1.5)  # host must finish pasting before the old text syncs back
-            try:
-                set_clipboard(old)
-            except Exception:
-                pass
-        threading.Thread(target=restore, daemon=True).start()
-
-
 def type_text(text):
     # keyboard.write defaults to unicode VK_PACKET events on Windows, which
     # remote-desktop clients (Chrome Remote Desktop, RDP) do not forward -- the
@@ -477,13 +400,13 @@ def type_text(text):
     remote = any(t in title.lower() for t in REMOTE_TITLES)
     delay = REMOTE_TYPE_DELAY if remote else TYPE_DELAY
     t0 = time.time()
-    if remote and REMOTE_MODE == "paste":
-        mode = "paste"
+    if remote and REMOTE_MODE == "host" and SERVER and TYPE_TOKEN:
         try:
-            paste_text(text)
+            server_type(text)
+            mode = "host"
         except Exception as e:
-            log.warning("paste failed (%s); typing instead", e)
-            mode = "vk %d ms, %d-char chunks (paste failed)" % (round(delay * 1000), REMOTE_CHUNK)
+            log.warning("host typing failed (%s); typing through the remote client", e)
+            mode = "vk %d ms, %d-char chunks (host failed)" % (round(delay * 1000), REMOTE_CHUNK)
             for chunk in word_chunks(text, REMOTE_CHUNK):
                 keyboard.write(chunk, delay=delay, exact=False)
                 time.sleep(REMOTE_CHUNK_PAUSE)
@@ -533,6 +456,19 @@ def server_transcribe(audio):
     if not out.get("ok"):
         raise RuntimeError(out.get("error") or "server error")
     return out.get("text", "").strip()
+
+
+def server_type(text):
+    """Ask the Parrot server to type text on its own desktop (the remote host)."""
+    req = urllib.request.Request(
+        SERVER + "/type", method="POST", headers={"Content-Type": "application/json"},
+        # token in the body: Shop Server's /parrot/* forward drops custom headers
+        data=json.dumps({"text": text, "token": TYPE_TOKEN}).encode("utf-8"),
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        out = json.loads(r.read().decode("utf-8"))
+    if not out.get("ok"):
+        raise RuntimeError(out.get("error") or "server error")
 
 
 def main():
