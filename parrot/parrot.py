@@ -519,7 +519,7 @@ def main():
         if text is None:
             try:
                 segments, _ = local_model().transcribe(
-                    audio, language="en", beam_size=1, vad_filter=True,
+                    audio, language="en", beam_size=1, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=700, speech_pad_ms=400),
                     initial_prompt=VOCAB.initial_prompt(),
                 )
                 text = VOCAB.fix(" ".join(s.text.strip() for s in segments).strip())

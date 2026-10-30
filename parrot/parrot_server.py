@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 
 PORT = int(os.environ.get("PARROT_SERVER_PORT", "8810"))
-MODEL_NAME = os.environ.get("PARROT_MODEL", "base.en")  # inthermopc i5-9500T: base.en ~1.1 s per 8 s clip, small.en ~3 s (10/23 bench)
+MODEL_NAME = os.environ.get("PARROT_MODEL", "small.en")  # i5-9500T, 7 s clip: base.en 1.3 s, small.en 4.5 s; base.en drops short words (10/30)
 HERE = os.path.dirname(os.path.abspath(__file__))
 logging.basicConfig(
     filename=os.path.join(HERE, "parrot_server.log"), level=logging.INFO,
@@ -131,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
         seconds = len(audio) / 16000.0
         t0 = time.time()
         try:
-            segments, _ = MODEL.transcribe(audio, language="en", beam_size=1, vad_filter=True,
+            segments, _ = MODEL.transcribe(audio, language="en", beam_size=1, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=700, speech_pad_ms=400),
                                            initial_prompt=VOCAB.initial_prompt())
             text = VOCAB.fix(" ".join(s.text.strip() for s in segments).strip())
         except Exception as e:  # noqa: BLE001
