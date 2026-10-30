@@ -81,6 +81,13 @@ REMOTE_CHUNK_PAUSE = float(os.environ.get("PARROT_REMOTE_CHUNK_PAUSE_MS", "120")
 # cross CRD. PARROT_TYPE_TOKEN must match the server's type_token.txt.
 # "type" = old chunked path (also the fallback if the server call fails).
 REMOTE_MODE = os.environ.get("PARROT_REMOTE_MODE", "host").strip().lower()
+# Ctrl+Win in a full-screen Chrome Remote Desktop tab: Chrome's keyboard lock
+# forwards it to the host and hides it from this PC, so with PARROT_SERVER set
+# the server (on the host) reports its own Ctrl+Win state and this PC records
+# while it is held -- only when a remote window (REMOTE_TITLES) is in front.
+# PARROT_HOST_HOTKEY=0 turns this off.
+HOST_HOTKEY = os.environ.get("PARROT_HOST_HOTKEY", "1") != "0"
+HOST_MAX_HOLD = 120  # s; a stuck host key state never records forever
 TYPE_TOKEN = os.environ.get("PARROT_TYPE_TOKEN", "").strip()
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
@@ -376,8 +383,47 @@ def mouse_pressed():
     return RAW is not None and RAW.mouse()
 
 
+class HostKeys:
+    """Long-polls the server's /hotkey for Ctrl+Win held on the remote host."""
+
+    def __init__(self):
+        self.down, self.since = False, 0.0
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        seq, fails = -1, 0
+        while True:
+            try:
+                with urllib.request.urlopen(SERVER + "/hotkey?seq=%d" % seq, timeout=14) as r:
+                    out = json.loads(r.read().decode("utf-8"))
+                if not out.get("ok"):
+                    raise RuntimeError(out.get("error") or "server error")
+                down, seq = bool(out.get("down")), int(out.get("seq", -1))
+                if down and not self.down:
+                    self.since = time.monotonic()
+                self.down, fails = down, 0
+            except Exception as e:  # noqa: BLE001
+                self.down, seq, fails = False, -1, fails + 1
+                if fails in (1, 10) or fails % 100 == 0:
+                    log.warning("host hotkey poll failed x%d (%s)", fails, e)
+                time.sleep(min(30, 2 * fails))
+
+    def pressed(self):
+        if not self.down or time.monotonic() - self.since > HOST_MAX_HOLD:
+            return False
+        title = foreground_title().lower()
+        return any(t in title for t in REMOTE_TITLES)
+
+
+HOST = None  # set in main() when PARROT_SERVER is set
+
+
+def host_pressed():
+    return HOST is not None and HOST.pressed()
+
+
 def combo_pressed():
-    return (ctrl_pressed() and win_pressed()) or mouse_pressed()
+    return (ctrl_pressed() and win_pressed()) or mouse_pressed() or host_pressed()
 
 
 def foreground_title():
@@ -472,7 +518,7 @@ def server_type(text):
 
 
 def main():
-    global RAW
+    global RAW, HOST
     log.info("starting; loading model %s", MODEL_NAME)
     rk = RawKeys()
     rk.ready.wait(5)
@@ -515,6 +561,9 @@ def main():
                     f.write(body)
         except Exception as e:  # noqa: BLE001
             log.warning("vocab download failed (%s); using local copy", e)
+        if HOST_HOTKEY:
+            HOST = HostKeys()
+            log.info("host ctrl+win via %s/hotkey (remote windows: %s)", SERVER, ", ".join(REMOTE_TITLES))
     else:
         local_model()
     beep(700, 90)
@@ -525,13 +574,13 @@ def main():
             time.sleep(0.02)
             continue
 
-        via_mouse = mouse_pressed()
-        if not via_mouse:
+        via = ("mouse" if mouse_pressed() else "ctrl+win" if ctrl_pressed() and win_pressed()
+               else "host ctrl+win")
+        if via == "ctrl+win":
             # A key event while Win is held stops Windows opening the Start
-            # menu when Win is released.
+            # menu when Win is released. (The server does this on the host.)
             keyboard.press_and_release("f24")
-        log.info("recording (%s); foreground %r", "mouse" if via_mouse else "ctrl+win",
-                 foreground_title()[:60])
+        log.info("recording (%s); foreground %r", via, foreground_title()[:60])
 
         frames = []
 

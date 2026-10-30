@@ -15,6 +15,13 @@ POST /type         body = {"text": "...", "token": "..."} -> types text into thi
                    clipboard sync is focus-driven so paste got stale text. token
                    must match type_token.txt next to this file (made on first run).
 
+GET  /hotkey?seq=N  -> {"ok": true, "down": bool, "seq": M}. Long poll: answers when
+                   Ctrl+Win changes on THIS PC's keyboard (seq != N) or after 10 s.
+                   A full-screen Chrome Remote Desktop tab forwards every key to
+                   this host (Chrome's keyboard lock hides them from the client
+                   PC), so the client's Parrot watches here for its hotkey and
+                   records from its own mic.
+
 Custom words: vocab.txt next to this file (see Vocab); edits apply on the next
 dictation, no restart. Kept out of the public repo (customer names).
 
@@ -34,6 +41,7 @@ import socket
 import sys
 import threading
 import time
+import urllib.parse
 from ctypes import wintypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -176,6 +184,44 @@ def type_here(text):
             time.sleep(0.005)
 
 
+class HostHotkey:
+    """Ctrl+Win state on this PC's console (keys arrive via Chrome Remote Desktop)."""
+
+    def __init__(self):
+        self.down, self.seq = False, 0
+        self.cond = threading.Condition()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        u32 = ctypes.windll.user32
+        while True:
+            try:
+                ctrl = u32.GetAsyncKeyState(0x11) & 0x8000
+                win = (u32.GetAsyncKeyState(0x5B) | u32.GetAsyncKeyState(0x5C)) & 0x8000
+                down = bool(ctrl and win)
+                if down != self.down:
+                    if down:
+                        # a key event while Win is held stops the host's Start menu opening on release
+                        u32.keybd_event(0x87, 0, 0, 0)  # F24
+                        u32.keybd_event(0x87, 0, KEYEVENTF_KEYUP, 0)
+                    with self.cond:
+                        self.down, self.seq = down, self.seq + 1
+                        self.cond.notify_all()
+                    log.info("host ctrl+win %s", "down" if down else "up")
+            except Exception:  # noqa: BLE001
+                log.exception("hotkey poll failed")
+                time.sleep(1)
+            time.sleep(0.015)
+
+    def wait(self, seq, timeout):
+        with self.cond:
+            self.cond.wait_for(lambda: self.seq != seq, timeout)
+            return self.down, self.seq
+
+
+HOTKEY = None
+
+
 class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
@@ -188,6 +234,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.rstrip("/") in ("/healthz", ""):
             return self._json({"ok": True, "model": MODEL_NAME})
+        if self.path.split("?")[0].rstrip("/") == "/hotkey":
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            try:
+                seq = int(q.get("seq", ["-1"])[0])
+            except ValueError:
+                seq = -1
+            down, seq = HOTKEY.wait(seq, 10)
+            return self._json({"ok": True, "down": down, "seq": seq})
         if self.path.rstrip("/") == "/vocab":
             try:
                 with open(VOCAB.path, "rb") as f:
@@ -252,7 +306,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global MODEL, TYPE_TOKEN
+    global MODEL, TYPE_TOKEN, HOTKEY
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as e:
@@ -261,6 +315,7 @@ def main():
             return
         raise
     TYPE_TOKEN = type_token()
+    HOTKEY = HostHotkey()
     log.info("loading model %s", MODEL_NAME)
     from faster_whisper import WhisperModel  # slow import
 
