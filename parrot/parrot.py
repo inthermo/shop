@@ -13,11 +13,16 @@ full-screen Chrome Remote Desktop tab holds Chrome's keyboard lock.)
 Run with pythonw.exe for no console window. Logs to parrot.log next to
 this file. Beeps: high = recording, low = stopped, two rising = ready,
 buzz = nothing transcribed.
+
+Custom words (Inthermo, Cybex...): vocab.txt next to this file — see Vocab.
+With PARROT_SERVER set, the server's vocab.txt is the master copy and is
+downloaded here at startup for the local fallback.
 """
 
 import ctypes
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -71,6 +76,58 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("parrot")
+
+
+class Vocab:
+    """Custom words from vocab.txt (next to this script), re-read when it changes.
+
+    One term per line ("Inthermo", "Cybex") -> fed to whisper as initial_prompt
+    so it spells them right. "heard => Right" lines are whole-word,
+    case-insensitive fixes applied to the transcript for words it still
+    mishears ("in thermal => Inthermo"). "#" starts a comment.
+    """
+
+    def __init__(self, path):
+        self.path, self.mtime, self.prompt, self.fixes = path, None, None, []
+
+    def _load(self):
+        try:
+            mtime = os.path.getmtime(self.path)
+        except OSError:
+            mtime = None
+        if mtime == self.mtime:
+            return
+        self.mtime, terms, fixes = mtime, [], []
+        if mtime is not None:
+            with open(self.path, encoding="utf-8-sig") as f:
+                for line in f:
+                    line = line.split("#", 1)[0].strip()
+                    if "=>" in line:
+                        heard, right = (s.strip() for s in line.split("=>", 1))
+                        if heard and right:
+                            fixes.append((re.compile(r"\b%s\b" % r"\s*".join(map(re.escape, heard.split())), re.I), right))
+                            terms.append(right)
+                    elif line:
+                        terms.append(line)
+        terms = list(dict.fromkeys(terms))
+        self.prompt = (", ".join(terms) + ".") if terms else None
+        self.fixes = fixes
+        log.info("vocab: %d terms, %d fixes", len(terms), len(fixes))
+
+    def initial_prompt(self):
+        try:
+            self._load()
+        except Exception:  # noqa: BLE001
+            log.exception("vocab load failed")
+        return self.prompt
+
+    def fix(self, text):
+        for rx, right in self.fixes:
+            text = rx.sub(right, text)
+        return text
+
+
+VOCAB = Vocab(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vocab.txt"))
 
 # --- Raw Input key-state tracker ---------------------------------------
 # Chrome's Keyboard Lock (used by Chrome Remote Desktop in full screen)
@@ -393,6 +450,14 @@ def main():
         except Exception as e:  # noqa: BLE001
             log.warning("server %s unreachable (%s); loading local model", SERVER, e)
             local_model()
+        try:
+            with urllib.request.urlopen(SERVER + "/vocab", timeout=10) as r:
+                body = r.read()
+            if body.strip():  # keep the local copy if the server has none
+                with open(VOCAB.path, "wb") as f:
+                    f.write(body)
+        except Exception as e:  # noqa: BLE001
+            log.warning("vocab download failed (%s); using local copy", e)
     else:
         local_model()
     beep(700, 90)
@@ -454,9 +519,10 @@ def main():
         if text is None:
             try:
                 segments, _ = local_model().transcribe(
-                    audio, language="en", beam_size=1, vad_filter=True
+                    audio, language="en", beam_size=1, vad_filter=True,
+                    initial_prompt=VOCAB.initial_prompt(),
                 )
-                text = " ".join(s.text.strip() for s in segments).strip()
+                text = VOCAB.fix(" ".join(s.text.strip() for s in segments).strip())
                 log.info("%.1fs audio -> %.1fs transcribe: %r", seconds, time.time() - t0, text)
             except Exception:
                 log.exception("transcription failed")
