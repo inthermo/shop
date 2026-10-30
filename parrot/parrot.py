@@ -68,6 +68,12 @@ REMOTE_TYPE_DELAY = float(os.environ.get("PARROT_REMOTE_TYPE_DELAY", "0.035"))
 # titled after the remote machine ("InthermoPC - Google Chrome"), not "Remote Desktop".
 REMOTE_TITLES = [t.strip().lower() for t in
                  os.environ.get("PARROT_REMOTE_TITLES", "remote desktop,inthermopc").split(",") if t.strip()]
+# Remote typing goes out in word chunks with a breather between them. An
+# unbroken burst of injected keys into a full-screen Chrome Remote Desktop tab
+# dropped the CRD session (7 times on 10/29, each to the second as typing
+# began); pausing lets the client's event queue drain.
+REMOTE_CHUNK = int(os.environ.get("PARROT_REMOTE_CHUNK", "24"))
+REMOTE_CHUNK_PAUSE = float(os.environ.get("PARROT_REMOTE_CHUNK_PAUSE_MS", "120")) / 1000.0
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -385,13 +391,33 @@ def type_text(text):
     # letters through full-screen Chrome Remote Desktop), so pace slower there.
     remote = any(t in title.lower() for t in REMOTE_TITLES)
     delay = REMOTE_TYPE_DELAY if remote else TYPE_DELAY
-    if text.isascii():
-        mode = "vk %d ms" % round(delay * 1000)
-        keyboard.write(text, delay=delay, exact=False)
-    else:
+    t0 = time.time()
+    if not text.isascii():
         mode = "unicode"
         keyboard.write(text)
-    log.info("typed (%s) into %r", mode, title[:80])
+    elif remote:
+        mode = "vk %d ms, %d-char chunks" % (round(delay * 1000), REMOTE_CHUNK)
+        for chunk in word_chunks(text, REMOTE_CHUNK):
+            keyboard.write(chunk, delay=delay, exact=False)
+            time.sleep(REMOTE_CHUNK_PAUSE)
+    else:
+        mode = "vk %d ms" % round(delay * 1000)
+        keyboard.write(text, delay=delay, exact=False)
+    log.info("typed %d chars in %.1f s (%s) into %r",
+             len(text), time.time() - t0, mode, title[:80])
+
+
+def word_chunks(text, n):
+    """Split text at word boundaries into pieces of at least n chars."""
+    out, cur = [], ""
+    for piece in re.split(r"(?<= )", text):
+        cur += piece
+        if len(cur) >= n:
+            out.append(cur)
+            cur = ""
+    if cur:
+        out.append(cur)
+    return out
 
 
 def beep(freq, ms):
