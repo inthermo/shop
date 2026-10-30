@@ -79,6 +79,9 @@ REMOTE_CHUNK_PAUSE = float(os.environ.get("PARROT_REMOTE_CHUNK_PAUSE_MS", "120")
 # clipboard to the host), wait for the sync, send one Ctrl+V. "type" = old path.
 REMOTE_MODE = os.environ.get("PARROT_REMOTE_MODE", "paste").strip().lower()
 REMOTE_PASTE_WAIT = float(os.environ.get("PARROT_REMOTE_PASTE_WAIT_MS", "400")) / 1000.0
+# keyboard.send("ctrl+v") fires Ctrl and V back to back; CRD lost the Ctrl and
+# the host got a bare "v". Hold Ctrl this long around the V press.
+PASTE_KEY_DELAY = float(os.environ.get("PARROT_PASTE_KEY_DELAY_MS", "80")) / 1000.0
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parrot.log")
 
 logging.basicConfig(
@@ -442,7 +445,15 @@ def paste_text(text):
     old = get_clipboard()
     set_clipboard(text)
     time.sleep(REMOTE_PASTE_WAIT)  # let the remote client sync the clipboard to the host
-    keyboard.send("ctrl+v")
+    keyboard.press("ctrl")
+    try:
+        time.sleep(PASTE_KEY_DELAY)
+        keyboard.press("v")
+        time.sleep(PASTE_KEY_DELAY)
+        keyboard.release("v")
+        time.sleep(PASTE_KEY_DELAY)
+    finally:
+        keyboard.release("ctrl")
     if old is not None:
         def restore():
             time.sleep(1.5)  # host must finish pasting before the old text syncs back
