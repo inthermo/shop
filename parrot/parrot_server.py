@@ -264,7 +264,10 @@ def main():
     log.info("loading model %s", MODEL_NAME)
     from faster_whisper import WhisperModel  # slow import
 
-    MODEL = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
+    # all cores + above-normal priority: dictation latency shouldn't lose to WSL/agent background work
+    k32 = ctypes.windll.kernel32
+    k32.SetPriorityClass(k32.GetCurrentProcess(), 0x8000)  # ABOVE_NORMAL_PRIORITY_CLASS
+    MODEL = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4)
     MODEL.transcribe(np.zeros(16000, dtype=np.float32), language="en")  # warm up
     log.info("ready on 127.0.0.1:%d", PORT)
     srv.serve_forever()
