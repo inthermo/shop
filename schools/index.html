@@ -47,6 +47,11 @@
   .x { margin-left:6px; border:none; background:none; color:var(--muted); padding:0 4px; font-size:1rem; }
   .q { color:var(--muted); font-size:.8rem; }
   .legend span { display:inline-block; padding:1px 8px; border-radius:6px; margin-right:6px; font-size:.82rem; }
+  #ask { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  #ask input { padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:inherit; font:inherit; }
+  #q { flex:1 1 260px; } #pass { width:110px; }
+  #askst { margin-top:6px; font-size:.88rem; }
+  .qnotes { font-size:.86rem; margin-top:12px; } .qnotes li { margin-bottom:6px; } .qnotes a { color:var(--muted); }
   @media (max-width:600px) { th, td { min-width:130px; padding:7px 8px; } th.rl, td.rl { min-width:110px; max-width:120px; } }
 </style>
 </head>
@@ -73,6 +78,16 @@
   <details id="catbox">
     <summary>Choose categories (rows)</summary>
     <div class="cats" id="cats"></div>
+  </details>
+
+  <details id="askbox">
+    <summary>Ask a question (AI web search adds a row)</summary>
+    <form id="ask">
+      <input id="q" maxlength="300" placeholder="e.g. Average class size? Percent of students on financial aid?" required>
+      <input id="pass" type="password" placeholder="Passcode" autocomplete="current-password" required>
+      <button class="primary" id="askgo">Ask</button>
+    </form>
+    <div id="askst" class="muted">Gemini searches the web for every school and adds the answer as a row under “Your questions”. Takes ~30–60 s. AI answers can be wrong — check the sources.</div>
   </details>
 
   <div class="sticky bar">
@@ -272,8 +287,8 @@ function card(s) {
 S.forEach(s => document.getElementById(s.grp==='local'?'g-local':'g-boarding').appendChild(card(s)));
 
 const catsEl = document.getElementById('cats');
-CATS.forEach(([g, rows]) => {
-  catsEl.insertAdjacentHTML('beforeend', `<div class="grp">${g}</div>`);
+function addToggles(g, rows) {
+  if (g) catsEl.insertAdjacentHTML('beforeend', `<div class="grp">${g}</div>`);
   rows.forEach(([k, label]) => {
     const l = document.createElement('label');
     l.innerHTML = `<input type="checkbox" ${hidden.has(k)?'':'checked'}> ${label}`;
@@ -284,7 +299,8 @@ CATS.forEach(([g, rows]) => {
     });
     catsEl.appendChild(l);
   });
-});
+}
+CATS.forEach(([g, rows]) => addToggles(g, rows));
 
 function sync() {
   document.querySelectorAll('.school').forEach(el => {
@@ -322,7 +338,7 @@ function render() {
           [hi, lo] = best === 'hi' ? [mx, mn] : [mn, mx];
         }
       }
-      body += `<tr><td class="rl">${label}</td>`;
+      body += `<tr><td class="rl">${label}${k.startsWith('q_') ? `<button class="x" title="Delete question" data-qdel="${k.slice(2)}">×</button>` : ''}</td>`;
       pick.forEach(s => {
         const n = Array.isArray(s[k]) ? s[k][1] : null;
         const cls = n === null || n === undefined || hi === null ? '' : n === hi ? 'best' : n === lo ? 'worst' : '';
@@ -333,8 +349,11 @@ function render() {
     if (body) h += `<tr class="grp"><td class="rl">${g}</td>${pick.map(()=>'<td></td>').join('')}</tr>` + body;
   });
   h += '</tbody></table></div>';
+  const qs = QROWS.filter(([k]) => !hidden.has(k)).map(([k]) => QITEMS[k.slice(2)]);
+  if (qs.length) h += '<ul class="qnotes muted">' + qs.map(it => `<li><b>${esc(it.label)}</b> — “${esc(it.q)}”: ${esc(it.note || '')} ${(it.sources||[]).map(s => `<a href="${esc(s.uri).replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${esc(s.title || 'source')}</a>`).join(' · ')}</li>`).join('') + '</ul>';
   const out = document.getElementById('out');
   out.innerHTML = h;
+  out.querySelectorAll('[data-qdel]').forEach(b => b.addEventListener('click', () => delQ(b.dataset.qdel)));
   out.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { sel.delete(b.dataset.rm); sync(); render(); }));
 }
 
@@ -344,6 +363,54 @@ document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('clic
 }));
 document.getElementById('go').addEventListener('click', () => { render(); document.getElementById('out').scrollIntoView({behavior:'smooth'}); });
 document.getElementById('diffonly').addEventListener('change', () => { if (document.getElementById('out').innerHTML) render(); });
+
+// ---- "Your questions": AI-researched rows (Shop Assistant Apps Script, Schools.js) ----
+const API = 'https://script.google.com/macros/s/AKfycby-Or47D7cvZb3t1IeGzXXDpKjVZ1Eg2_pcHmjxrBq9qqj4W6ST7y5OEZLcNg1KEm2Kcw/exec';
+const QROWS = [], QITEMS = {};
+CATS.push(['Your questions', QROWS]);
+const askst = document.getElementById('askst'), passEl = document.getElementById('pass');
+try { passEl.value = localStorage.getItem('sc-pass') || ''; } catch(e) {}
+let qHeader = false;
+function addQ(it) {
+  if (!it || !/^\w+$/.test(it.id || '') || QITEMS[it.id]) return;
+  QITEMS[it.id] = it;
+  const k = 'q_' + it.id, row = [k, esc(it.label || it.q), it.best === 'hi' || it.best === 'lo' ? it.best : null];
+  QROWS.push(row);
+  S.forEach(s => { const v = (it.values || {})[s.id]; s[k] = Array.isArray(v) ? [String(v[0]), typeof v[1] === 'number' ? v[1] : null] : '—'; });
+  addToggles(qHeader ? '' : 'Your questions', [row]); qHeader = true;
+}
+async function post(body) {
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+  return r.json();
+}
+async function delQ(id) {
+  if (!confirm('Delete this question row for everyone?')) return;
+  try {
+    const r = await post({ op: 'schoolDel', pass: passEl.value, id });
+    if (!r.ok) return alert(r.error || 'Delete failed');
+    const i = QROWS.findIndex(([k]) => k === 'q_' + id); if (i >= 0) QROWS.splice(i, 1);
+    delete QITEMS[id]; render();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+document.getElementById('ask').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = document.getElementById('q').value.trim(), btn = document.getElementById('askgo');
+  if (!q) return;
+  try { localStorage.setItem('sc-pass', passEl.value); } catch(e) {}
+  btn.disabled = true; askst.textContent = 'Researching all schools… ~30–60 s';
+  try {
+    const r = await post({ op: 'schoolAsk', pass: passEl.value, q, schools: S.map(s => ({ id: s.id, name: s.name, sub: s.sub })) });
+    if (!r.ok) throw new Error(r.error || 'failed');
+    addQ(r.item); document.getElementById('q').value = '';
+    askst.textContent = `Added “${r.item.label}” under Your questions.`;
+    if (sel.size >= 2) { render(); document.getElementById('out').scrollIntoView({behavior:'smooth'}); }
+  } catch (err) { askst.textContent = 'Error: ' + err.message; }
+  btn.disabled = false;
+});
+fetch(API + '?fn=schools').then(r => r.json()).then(d => {
+  (d.items || []).forEach(addQ);
+  if (QROWS.length && document.getElementById('out').innerHTML) render();
+}).catch(() => {});
 
 const m = location.hash.match(/s=([\w,]+)/);
 if (m) { m[1].split(',').forEach(id => S.some(s => s.id === id) && sel.add(id)); }
