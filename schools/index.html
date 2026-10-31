@@ -122,7 +122,7 @@ const CATS = [
   ]],
   ['What makes it different', [
     ['known', 'Known for'],
-    ['entre', 'Entrepreneurship / innovation'],
+    ['entre', 'Entrepreneurship / innovation', 'hi'],
     ['vibe', 'Culture / feel'],
     ['watch', 'Watch-outs'],
   ]],
@@ -231,16 +231,22 @@ const S = [
   known:'One of MN\'s largest IB programs; French/German immersion; 81% grad rate (2023)', vibe:'Big, diverse, urban public', watch:'~5× more students per teacher than boarding schools'},
 ];
 
-// Entrepreneurship: web search only (Oct 2026). "None found" ≠ none; ask on tours.
+// Entrepreneurship: checked school websites directly, Oct 2026. Score 5 = formal program, 1 = nothing found on site (≠ none; ask on tours).
 const ENTRE = {
-  hotchkiss:'Maker\'s Club; tech & innovation offerings; no entrepreneurship course found?',
-  choate:'Entrepreneurship elective, gr 11–12 (spring term)?',
-  exeter:'Business Club; design/innovation lab; no formal course in catalog',
-  andover:'Tang Institute + "The Workshop" project term; library makerspace',
-  deerfield:'Experimentory is a summer program for gr 7–8 only; nothing upper-school found?',
-  sps:'None found — ask', groton:'None found — ask', middlesex:'None found — ask', milton:'None found — ask',
-  loomis:'None found — ask', taft:'None found — ask', nmh:'None found — ask', spa:'None found — ask',
-  central:'SPPS Career Pathways business track; DECA at Central?',
+  loomis:['Pearse Hub for Innovation: senior Innovation Trimester (projects for local businesses/nonprofits), makerspace, design thinking & entrepreneurship courses',5],
+  nmh:['Rhodes Fellowship course in Social Entrepreneurship (yearlong, gr 11–12, a "Signature Experience") + D.L. Moody Prize in Social Entrepreneurship',5],
+  middlesex:['Business Management (Harvard Business School cases) + Social Entrepreneurship elective (spring), both 2026–27',3],
+  choate:['Entrepreneurship elective gr 11–12 + Start Up club reported 2017–19; not confirmed current?',2.5],
+  groton:['Clubs only: Business & Management, Investment Club (manages real portfolio), Digital Marketing',2],
+  hotchkiss:['EFX makerspace (engineering/fabrication); no entrepreneurship course or club found',2],
+  exeter:['Business Club; no entrepreneurship course (per school/student paper)',2],
+  andover:['Financial Literacy seminar, History of Financial Crises; no entrepreneurship course found',2],
+  deerfield:['Economics + History of Capitalism only; no entrepreneurship course',2],
+  spa:['Engineering electives incl. product design + client projects; Economics elective; no business course',2],
+  sps:['Nothing found (Applied Science & Engineering Program, independent study)',1],
+  milton:['Nothing found on site?',1],
+  taft:['Nothing found (Independent Study, Innovations in Learning)',1],
+  central:['Nothing found; trades pathways + robotics club; DECA not found?',1],
 };
 S.forEach(s => s.entre = ENTRE[s.id]);
 
