@@ -71,11 +71,11 @@
 <script>
 // ---- data registry: each data/*.js calls SSAT.add({...}) ----
 const SSAT = { sets: {}, add(s) { this.sets[s.id] = s; } };
-const FILES = ['S1','W1','V1','V2','V3','V4','V5','V6','V7','V8','A1','A2','A3','A4','M1','M2','M3','M4','M5','M6','R1','R2','R3','R4','R5','R6'];
+const FILES = ['S1','W1','V1','V2','V3','V4','V5','V6','V7','V8','A1','A2','A3','A4','G1','G2','E1','M1','M2','M3','M4','M5','M6','R1','R2','R3','R4','R5','R6'];
 const SECTIONS = [
-  ['strategy','Strategy & guessing (do first)'], ['verbal','Verbal — synonyms & analogies (30 Q / 15 min)'],
+  ['strategy','Strategy & guessing (do first)'], ['guess','Eliminate & guess — beat the blanks (20 Q)'], ['verbal','Verbal — synonyms & analogies (30 Q / 15 min)'],
   ['analogy','Analogies — targeted drills (25 Q)'],
-  ['math','Math — no calculator (12 Q / 15 min)'], ['reading','Reading (3 passages, 15 Q / 15 min)'] ];
+  ['algebra','Algebra — targeted drills (18 Q)'], ['math','Math — no calculator (12 Q / 15 min)'], ['reading','Reading (3 passages, 15 Q / 15 min)'] ];
 
 const PLAN = [
   ['Diagnostic', 'Strategy & Guessing (practice mode) → Verbal 1 → Math 1 → Reading 1, all in <b>test mode</b>. Note the weakest section.'],
@@ -371,7 +371,7 @@ async function leaderboard(pick = '') {
 
 // load data files in order, then render
 let left = FILES.length;
-FILES.forEach(f => { const s = document.createElement('script'); s.src = 'data/' + f + '.js?v=2'; s.onload = s.onerror = () => { if (--left === 0) WHO ? signIn(WHO) : who(); }; document.head.appendChild(s); });
+FILES.forEach(f => { const s = document.createElement('script'); s.src = 'data/' + f + '.js?v=3'; s.onload = s.onerror = () => { if (--left === 0) WHO ? signIn(WHO) : who(); }; document.head.appendChild(s); });
 </script>
 </body>
 </html>
