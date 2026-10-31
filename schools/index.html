@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School Compare</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#d9dde3;
+          --accent:#1f5fbf; --sel:#e8f0fe; --best:#e6f4ea; --bestink:#1e7a37; --worst:#fdf0e1; --worstink:#a35200; --head:#eef1f5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1e232b; --ink:#e8eaed; --muted:#9aa3b0; --line:#343b46;
+            --accent:#6ea4ff; --sel:#223252; --best:#1c3325; --bestink:#7fd69a; --worst:#3a2a17; --worstink:#f0b35a; --head:#262c36; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:1280px; margin:0 auto; padding:16px; }
+  h1 { font-size:1.45rem; margin:.2em 0; } h2 { font-size:1.05rem; margin:1.2em 0 .5em; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  button { font:inherit; cursor:pointer; border-radius:8px; color:var(--ink); background:var(--card); border:1px solid var(--line); padding:7px 12px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  button.primary:disabled { opacity:.45; cursor:default; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+  .school { display:flex; gap:10px; align-items:flex-start; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer; user-select:none; }
+  .school:hover { border-color:var(--accent); }
+  .school.on { background:var(--sel); border-color:var(--accent); }
+  .school input { margin-top:4px; width:18px; height:18px; accent-color:var(--accent); }
+  .school b { display:block; } .school span { color:var(--muted); font-size:.85rem; }
+  .sticky { position:sticky; bottom:0; background:var(--bg); border-top:1px solid var(--line); padding:10px 0; margin-top:14px; z-index:5; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin:10px 0; }
+  summary { cursor:pointer; font-weight:600; }
+  .cats { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:4px 14px; margin-top:8px; font-size:.92rem; }
+  .cats label { display:flex; gap:6px; align-items:center; }
+  .cats .grp { grid-column:1/-1; font-weight:600; margin-top:6px; color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; }
+  .wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); }
+  table { border-collapse:separate; border-spacing:0; width:100%; font-size:.92rem; }
+  th, td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; text-align:left; min-width:150px; }
+  thead th { background:var(--head); position:sticky; top:0; z-index:2; font-size:.95rem; }
+  thead th small { display:block; font-weight:400; color:var(--muted); }
+  th.rl, td.rl { position:sticky; left:0; background:var(--card); z-index:1; min-width:150px; max-width:170px; font-weight:600; border-right:1px solid var(--line); }
+  thead th.rl { background:var(--head); z-index:3; }
+  tr.grp td { background:var(--head); font-weight:700; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  tr.grp td.rl { background:var(--head); }
+  td.best { background:var(--best); color:var(--bestink); font-weight:600; }
+  td.worst { background:var(--worst); color:var(--worstink); }
+  .x { margin-left:6px; border:none; background:none; color:var(--muted); padding:0 4px; font-size:1rem; }
+  .q { color:var(--muted); font-size:.8rem; }
+  .legend span { display:inline-block; padding:1px 8px; border-radius:6px; margin-right:6px; font-size:.82rem; }
+  @media (max-width:600px) { th, td { min-width:130px; padding:7px 8px; } th.rl, td.rl { min-width:110px; max-width:120px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>School Compare</h1>
+  <p class="muted">Pick the schools you want, then hit <b>Compare</b>. The table puts them side by side; green = best of your picks, amber = weakest, for rows where "better" is clear. Figures are approximate (2025–27) — <span class="q">?</span> marks low-confidence values. Verify anything decisive with the school.</p>
+
+  <div class="bar">
+    <span class="muted">Quick picks:</span>
+    <button data-preset="shortlist">Shortlist</button>
+    <button data-preset="weekends">Most stay on weekends</button>
+    <button data-preset="catalog">Biggest course catalogs</button>
+    <button data-preset="local">Twin Cities vs. boarding</button>
+    <button data-preset="all">All</button>
+    <button data-preset="none">Clear</button>
+  </div>
+
+  <h2>New England boarding schools</h2>
+  <div class="grid" id="g-boarding"></div>
+  <h2>Twin Cities (day)</h2>
+  <div class="grid" id="g-local"></div>
+
+  <details id="catbox">
+    <summary>Choose categories (rows)</summary>
+    <div class="cats" id="cats"></div>
+  </details>
+
+  <div class="sticky bar">
+    <button class="primary" id="go" disabled>Compare</button>
+    <span id="count" class="muted">0 selected</span>
+    <label class="muted" style="margin-left:auto"><input type="checkbox" id="diffonly"> Only rows that differ</label>
+  </div>
+
+  <div id="out"></div>
+  <p class="muted" style="margin-top:18px">Sources: school websites and published catalogs (2026–27), Boarding School Review, Niche, NCES. Weekend-stay and travel times are estimates. No school publishes how many boarders stay on a typical weekend — ask admissions: "On a typical Saturday night, what share of boarders are on campus?"</p>
+</main>
+
+<script>
+// best: 'hi' higher is better, 'lo' lower is better, null = no ranking. v = numeric value used for ranking.
+const CATS = [
+  ['Basics', [
+    ['where', 'Location / setting'],
+    ['founded', 'Founded'],
+    ['students', 'Students (gr 9–12)'],
+    ['acres', 'Campus size'],
+    ['type', 'Type'],
+  ]],
+  ['Academics', [
+    ['courses', 'Courses offered', 'hi'],
+    ['avgClass', 'Average class size', 'lo'],
+    ['ratio', 'Students per teacher', 'lo'],
+    ['teaching', 'Teaching style'],
+    ['advanced', 'Advanced coursework'],
+  ]],
+  ['Boarding life', [
+    ['boarding', 'Boarding students', 'hi'],
+    ['weekend', 'Boarders on campus weekends', 'hi'],
+    ['saturday', 'Saturday classes'],
+    ['leave', 'Leaving on weekends'],
+    ['intl', 'International students'],
+  ]],
+  ['Getting there', [
+    ['travel', 'Door-to-door from St. Paul', 'lo'],
+    ['airport', 'Airport route'],
+  ]],
+  ['Cost & admission', [
+    ['tuition', 'Tuition (boarding / day)', 'lo'],
+    ['aid', 'Financial aid'],
+    ['admit', 'Acceptance rate'],
+    ['endow', 'Endowment per student', 'hi'],
+    ['deadline', 'Deadline → decision → reply'],
+  ]],
+  ['What makes it different', [
+    ['known', 'Known for'],
+    ['entre', 'Entrepreneurship / innovation'],
+    ['vibe', 'Culture / feel'],
+    ['watch', 'Watch-outs'],
+  ]],
+];
+
+const BD = 'Jan 15 → Mar 10 → Apr 10';
+// Each field: string, or [display, numeric] for ranked rows.
+const S = [
+ {id:'hotchkiss', name:'Hotchkiss', grp:'boarding', sub:'Lakeville, CT',
+  where:'Rural NW Connecticut, 2.5 h to NYC', founded:'1891', students:'~630', acres:'827 acres, farm + 2 lakes', type:'Boarding, coed',
+  courses:['200+ (school says)',200], avgClass:['12',12], ratio:['5–6:1',5.5], teaching:'Harkness tables in most humanities classes', advanced:'Advanced/honors courses; no AP label',
+  boarding:['~92%',92], weekend:['High — remote, campus stays full',5], saturday:'Yes', leave:'Permission needed', intl:'~15%',
+  travel:['~6–7 h',6.5], airport:'MSP → Hartford (BDL) nonstop, ~1 h 10 drive',
+  tuition:['~$74k / ~$64k',74], aid:'Meets full demonstrated need; ~35% on aid', admit:'~15%', endow:['~$1.0M ($650M)',1.0], deadline:BD,
+  known:'Fairfield Farm, sustainability focus, Main Building links most of campus indoors', vibe:'Close-knit, outdoorsy, traditional', watch:'Most remote → longest drive; hard to get off campus'},
+ {id:'choate', name:'Choate Rosemary Hall', grp:'boarding', sub:'Wallingford, CT',
+  where:'Small town CT, 2 h to NYC by train', founded:'1890', students:'~860', acres:'458 acres', type:'Boarding, coed',
+  courses:['314',314], avgClass:['11–12',11.5], ratio:['6:1',6], teaching:'Mixed; Harkness in English/history', advanced:'Honors + 8 Signature Programs',
+  boarding:['~75%',75], weekend:['Med-low — easy trips home / NYC',2], saturday:'No (since 2008)', leave:'Permission needed', intl:'~15%',
+  travel:['~5.5–6 h',5.75], airport:'MSP → Hartford (BDL) nonstop, ~40 min drive',
+  tuition:['~$73k / ~$56k',73], aid:'Meets full demonstrated need; ~35% on aid', admit:'~15%', endow:['~$0.7M ($600M)?',0.7], deadline:BD,
+  known:'Signature Programs (robotics, science research, environmental immersion, Arabic, JFK Institute in Government); big arts center', vibe:'Polished, ambitious, more "suburban"', watch:'More students leave on weekends than at Hotchkiss/SPS'},
+ {id:'exeter', name:'Phillips Exeter', grp:'boarding', sub:'Exeter, NH',
+  where:'Small town NH, 1 h to Boston', founded:'1781', students:'~1,080', acres:'~700 acres', type:'Boarding, coed',
+  courses:['358 (450+ claimed)',358], avgClass:['12',12], ratio:['5:1',5], teaching:'Harkness in every class (invented here)', advanced:'Very deep upper-level electives; no AP label',
+  boarding:['~80%',80], weekend:['Medium',3], saturday:'A few', leave:'Permission needed', intl:'~10%',
+  travel:['~6 h',6], airport:'MSP → Boston (BOS) nonstop, ~1 h drive',
+  tuition:['~$72k / ~$56k',72], aid:'Free tuition under ~$125k income; ~50% on aid', admit:'~13%', endow:['~$1.5M ($1.6B)',1.5], deadline:BD,
+  known:'Harkness method, largest catalog, deep pockets', vibe:'Intellectual, intense, independent', watch:'Big — students must self-advocate; heavy workload'},
+ {id:'andover', name:'Phillips Andover', grp:'boarding', sub:'Andover, MA',
+  where:'Suburban MA, 25 mi to Boston', founded:'1778', students:'~1,150', acres:'~500 acres', type:'Boarding, coed',
+  courses:['~400',400], avgClass:['12',12], ratio:['5:1',5], teaching:'Mixed; discussion-based, some Harkness', advanced:'Very broad electives; no AP label',
+  boarding:['~75%',75], weekend:['Med-low — sign-out, Boston nearby',2], saturday:'A few', leave:'Sign-out system', intl:'~10%',
+  travel:['~5.5–6 h',5.75], airport:'MSP → Boston (BOS) nonstop, ~40 min drive',
+  tuition:['~$73k / ~$57k',73], aid:'Need-blind admission, full need; ~47% on aid', admit:'~13%', endow:['~$1.2M ($1.4B)',1.2], deadline:BD,
+  known:'Need-blind, Addison Gallery of American Art, Peabody archaeology museum', vibe:'Big, diverse, mini-college', watch:'Largest school; weekends quieter as kids head to Boston'},
+ {id:'deerfield', name:'Deerfield Academy', grp:'boarding', sub:'Deerfield, MA',
+  where:'Rural W. Massachusetts village', founded:'1797', students:'~650', acres:'~280 acres', type:'Boarding, coed',
+  courses:['211',211], avgClass:['12',12], ratio:['5:1',5], teaching:'Traditional seminar', advanced:'Honors + advanced electives',
+  boarding:['~88%',88], weekend:['High — some weekends closed',5], saturday:'No', leave:'Form by Wednesday; some weekends closed', intl:'~13%',
+  travel:['~6.5 h',6.5], airport:'MSP → Hartford (BDL) nonstop, ~1 h drive',
+  tuition:['~$74k / ~$55k',74], aid:'Meets full demonstrated need; ~35% on aid', admit:'~16%', endow:['~$1.2M ($800M)?',1.2], deadline:BD,
+  known:'Family-style sit-down meals, class dress, strong traditions', vibe:'Formal, spirited, preppy', watch:'Most traditional/formal of the group'},
+ {id:'sps', name:"St. Paul's School (NH)", grp:'boarding', sub:'Concord, NH',
+  where:'Edge of Concord NH, 1.25 h to Boston', founded:'1856', students:'~540', acres:'~2,000 acres, ponds + woods', type:'All-boarding, coed',
+  courses:['100+ (school says)',100], avgClass:['10',10], ratio:['5:1',5], teaching:'Harkness (oval tables)', advanced:'Honors + independent study',
+  boarding:['100%',100], weekend:['High — everyone boards',5], saturday:'Yes', leave:'By form; set long weekends', intl:'~13%',
+  travel:['~6–6.5 h',6.25], airport:'MSP → Boston (BOS) nonstop, ~1 h 15 drive (or Manchester, 25 min, connecting)',
+  tuition:['~$74k (boarding only)',74], aid:'Meets full demonstrated need; ~40% on aid', admit:'~15%', endow:['~$1.6M ($850M)?',1.6], deadline:BD,
+  known:'Only school here where every student boards; chapel several mornings a week; huge campus', vibe:'All-in residential community', watch:'Smaller catalog; no day-student option'},
+ {id:'groton', name:'Groton School', grp:'boarding', sub:'Groton, MA',
+  where:'Rural MA, 45 min to Boston', founded:'1884', students:'~385', acres:'~400 acres?', type:'Boarding, coed',
+  courses:['157',157], avgClass:['11',11], ratio:['4:1?',4], teaching:'Seminar, classical core', advanced:'Advanced electives',
+  boarding:['~84%',84], weekend:['Med-high',4], saturday:'Half day', leave:'Permission needed', intl:'~10%?',
+  travel:['~6 h',6], airport:'MSP → Boston (BOS) nonstop, ~50 min drive',
+  tuition:['~$70k / ~$52k',70], aid:'Meets full demonstrated need; ~40% on aid', admit:'~10%', endow:['~$1.3M ($500M)?',1.3], deadline:BD,
+  known:'Smallest + most selective; Episcopal chapel; Latin/Greek tradition', vibe:'Tight-knit, formal, classical', watch:'Smallest catalog of the boarding schools'},
+ {id:'middlesex', name:'Middlesex School', grp:'boarding', sub:'Concord, MA',
+  where:'Suburban MA, 40 min to Boston', founded:'1901', students:'~425', acres:'~350 acres', type:'Boarding, coed',
+  courses:['228',228], avgClass:['12',12], ratio:['4:1',4], teaching:'Mixed, discussion-based', advanced:'Advanced electives',
+  boarding:['~70%',70], weekend:['Medium',3], saturday:'Unclear', leave:'Permission needed', intl:'~10%',
+  travel:['~5.75 h',5.75], airport:'MSP → Boston (BOS) nonstop, ~35 min drive',
+  tuition:['~$72k / ~$58k',72], aid:'Meets full demonstrated need', admit:'~16%?', endow:['~$0.6M ($250M)?',0.6], deadline:BD,
+  known:'Strong arts, "Being and Becoming" theme, near historic Concord', vibe:'Small, warm, artsy', watch:'Smaller endowment; 30% day students'},
+ {id:'milton', name:'Milton Academy', grp:'boarding', sub:'Milton, MA',
+  where:'Suburb, 8 mi to Boston', founded:'1798', students:'~720', acres:'~125 acres', type:'Half boarding / half day, coed',
+  courses:['200+ (school says)',200], avgClass:['14',14], ratio:['5:1',5], teaching:'Discussion-based', advanced:'Advanced electives',
+  boarding:['~50%',50], weekend:['Lowest — day families host boarders',1], saturday:'No', leave:'Permission needed', intl:'~12%',
+  travel:['~5.5 h',5.5], airport:'MSP → Boston (BOS) nonstop, ~20 min drive',
+  tuition:['~$73k / ~$60k',73], aid:'Meets full demonstrated need', admit:'~18%?', endow:['~$0.5M ($350M)?',0.5], deadline:BD,
+  known:'Boston access, Mountain School semester in Vermont, strong writing', vibe:'Urban-ish, outspoken, independent', watch:'Half day students → campus empties on weekends'},
+ {id:'loomis', name:'Loomis Chaffee', grp:'boarding', sub:'Windsor, CT',
+  where:'Hartford suburb', founded:'1914', students:'~745', acres:'~300 acres', type:'Boarding, coed',
+  courses:['~250',250], avgClass:['11',11], ratio:['5:1',5], teaching:'Mixed', advanced:'Honors + advanced electives',
+  boarding:['~70%',70], weekend:['Low',2], saturday:'No', leave:'Permission needed', intl:'~18%',
+  travel:['~5.25 h (fastest)',5.25], airport:'MSP → Hartford (BDL) nonstop, ~15 min drive',
+  tuition:['~$72k / ~$55k',72], aid:'Meets full demonstrated need; ~35% on aid', admit:'~20%?', endow:['~$0.5M ($350M)?',0.5], deadline:BD,
+  known:'Norton Center for the Common Good, island campus on the Farmington River', vibe:'Friendly, balanced, service-minded', watch:'30% day students; many leave weekends'},
+ {id:'taft', name:'Taft School', grp:'boarding', sub:'Watertown, CT',
+  where:'Small town near Waterbury, CT', founded:'1890', students:'~600', acres:'~220 acres', type:'Boarding, coed',
+  courses:['213',213], avgClass:['11',11], ratio:['5:1',5], teaching:'Traditional + discussion', advanced:'Honors + AP-level courses',
+  boarding:['~83%',83], weekend:['Medium',3], saturday:'Most, until noon', leave:'Permission; some weekends closed', intl:'~17%',
+  travel:['~6 h',6], airport:'MSP → Hartford (BDL) nonstop, ~50 min drive',
+  tuition:['~$72k / ~$53k',72], aid:'Meets full demonstrated need; ~35% on aid', admit:'~20%?', endow:['~$0.6M ($350M)?',0.6], deadline:BD,
+  known:'"Not to be served but to serve"; hockey; Saturday classes', vibe:'Spirited, sporty, traditional', watch:'Less remote than Hotchkiss'},
+ {id:'nmh', name:'Northfield Mount Hermon', grp:'boarding', sub:'Gill, MA',
+  where:'Rural Massachusetts/VT border', founded:'1879', students:'~630', acres:'~1,500 acres?', type:'Boarding, coed',
+  courses:['~180',180], avgClass:['13',13], ratio:['6–8:1',7], teaching:'Fewer, deeper courses per term', advanced:'Honors + advanced electives',
+  boarding:['~75%',75], weekend:['High-med — some weekends closed',4], saturday:'No', leave:'Some weekends closed', intl:'~23% (most here)',
+  travel:['~6.5 h',6.5], airport:'MSP → Hartford (BDL) nonstop, ~1 h 10 drive',
+  tuition:['~$72k / ~$48k',72], aid:'Meets full demonstrated need for many', admit:'~40%?', endow:['~$0.4M ($250M)?',0.4], deadline:BD,
+  known:'Work program, farm, most international student body', vibe:'Casual, global, outdoorsy', watch:'Least selective; higher ratio'},
+ {id:'spa', name:'St. Paul Academy (SPA)', grp:'local', sub:'St. Paul, MN — day',
+  where:'St. Paul, home every night', founded:'1900', students:'418 (Upper School)', acres:'~32 acres (Randolph campus)', type:'Private day, coed',
+  courses:['136',136], avgClass:['13',13], ratio:['7:1 (whole school)',7], teaching:'Discussion-based', advanced:'No AP program by design; deeper "advanced" courses',
+  boarding:['0% (day)',0], weekend:['n/a — home',null], saturday:'No', leave:'n/a', intl:'—',
+  travel:['0 — local',0], airport:'—',
+  tuition:['~$40k (day)',40], aid:'Need-based aid; ask about sibling policies', admit:'not published', endow:['n/p',null], deadline:'Feb 1 → Apr 2 → Apr 16',
+  known:'Strong Twin Cities college-prep; CTP5 test, not SSAT', vibe:'Academic, local, family-centered', watch:'Smallest catalog of private options; no boarding experience'},
+ {id:'central', name:'Central High School', grp:'local', sub:'St. Paul, MN — public',
+  where:'St. Paul, home every night', founded:'1866 (oldest in MN)', students:'~1,680', acres:'Urban campus', type:'Public (SPPS), free',
+  courses:['30+ IB, 13 AP (total n/p)',null], avgClass:['n/p',null], ratio:['~26:1',26], teaching:'Traditional + IB', advanced:'Full IB Diploma + MYP; AP; PSEO college courses',
+  boarding:['0% (day)',0], weekend:['n/a — home',null], saturday:'No', leave:'n/a', intl:'—',
+  travel:['0 — local',0], airport:'—',
+  tuition:['Free',0], aid:'—', admit:'SPPS enrollment', endow:['—',null], deadline:'SPPS school-choice window (verify)',
+  known:'One of MN\'s largest IB programs; French/German immersion; 81% grad rate (2023)', vibe:'Big, diverse, urban public', watch:'~5× more students per teacher than boarding schools'},
+];
+
+// Entrepreneurship: web search only (Oct 2026). "None found" ≠ none; ask on tours.
+const ENTRE = {
+  hotchkiss:'Maker\'s Club; tech & innovation offerings; no entrepreneurship course found?',
+  choate:'Entrepreneurship elective, gr 11–12 (spring term)?',
+  exeter:'Business Club; design/innovation lab; no formal course in catalog',
+  andover:'Tang Institute + "The Workshop" project term; library makerspace',
+  deerfield:'Experimentory is a summer program for gr 7–8 only; nothing upper-school found?',
+  sps:'None found — ask', groton:'None found — ask', middlesex:'None found — ask', milton:'None found — ask',
+  loomis:'None found — ask', taft:'None found — ask', nmh:'None found — ask', spa:'None found — ask',
+  central:'SPPS Career Pathways business track; DECA at Central?',
+};
+S.forEach(s => s.entre = ENTRE[s.id]);
+
+const PRESETS = {
+  shortlist:['hotchkiss','choate','exeter','sps','spa'],
+  weekends:['hotchkiss','sps','deerfield','nmh','groton'],
+  catalog:['andover','exeter','choate','loomis','middlesex'],
+  local:['hotchkiss','choate','spa','central'],
+  all:S.map(s=>s.id), none:[]
+};
+
+let sel = new Set(), hidden = new Set();
+try { hidden = new Set(JSON.parse(localStorage.getItem('sc-hidden')||'[]')); } catch(e) {}
+
+function card(s) {
+  const el = document.createElement('label');
+  el.className = 'school'; el.dataset.id = s.id;
+  el.innerHTML = `<input type="checkbox"><div><b>${s.name}</b><span>${s.sub}</span></div>`;
+  el.querySelector('input').addEventListener('change', e => { e.target.checked ? sel.add(s.id) : sel.delete(s.id); sync(); });
+  return el;
+}
+S.forEach(s => document.getElementById(s.grp==='local'?'g-local':'g-boarding').appendChild(card(s)));
+
+const catsEl = document.getElementById('cats');
+CATS.forEach(([g, rows]) => {
+  catsEl.insertAdjacentHTML('beforeend', `<div class="grp">${g}</div>`);
+  rows.forEach(([k, label]) => {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox" ${hidden.has(k)?'':'checked'}> ${label}`;
+    l.querySelector('input').addEventListener('change', e => {
+      e.target.checked ? hidden.delete(k) : hidden.add(k);
+      try { localStorage.setItem('sc-hidden', JSON.stringify([...hidden])); } catch(e) {}
+      if (document.getElementById('out').innerHTML) render();
+    });
+    catsEl.appendChild(l);
+  });
+});
+
+function sync() {
+  document.querySelectorAll('.school').forEach(el => {
+    const on = sel.has(el.dataset.id); el.classList.toggle('on', on); el.querySelector('input').checked = on;
+  });
+  document.getElementById('count').textContent = `${sel.size} selected`;
+  document.getElementById('go').disabled = sel.size < 2;
+  history.replaceState(null, '', sel.size ? '#s=' + [...sel].join(',') : location.pathname);
+}
+
+const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = t => esc(t).replace(/\?/g, '<span class="q">?</span>');
+const disp = v => Array.isArray(v) ? v[0] : (v ?? '—');
+
+function render() {
+  const pick = S.filter(s => sel.has(s.id));
+  if (pick.length < 2) { document.getElementById('out').innerHTML = ''; return; }
+  const diffOnly = document.getElementById('diffonly').checked;
+  let h = `<h2>Comparing ${pick.length} schools</h2>
+    <p class="legend muted"><span style="background:var(--best);color:var(--bestink)">best of these</span><span style="background:var(--worst);color:var(--worstink)">weakest of these</span></p>
+    <div class="wrap"><table><thead><tr><th class="rl">Category</th>`;
+  pick.forEach(s => h += `<th>${esc(s.name)}<button class="x" title="Remove" data-rm="${s.id}">×</button><small>${esc(s.sub)}</small></th>`);
+  h += '</tr></thead><tbody>';
+  CATS.forEach(([g, rows]) => {
+    let body = '';
+    rows.forEach(([k, label, best]) => {
+      if (hidden.has(k)) return;
+      const vals = pick.map(s => disp(s[k]));
+      if (diffOnly && new Set(vals).size === 1) return;
+      let hi = null, lo = null;
+      if (best) {
+        const nums = pick.map(s => Array.isArray(s[k]) ? s[k][1] : null).filter(n => n !== null && n !== undefined);
+        if (new Set(nums).size > 1) {
+          const mx = Math.max(...nums), mn = Math.min(...nums);
+          [hi, lo] = best === 'hi' ? [mx, mn] : [mn, mx];
+        }
+      }
+      body += `<tr><td class="rl">${label}</td>`;
+      pick.forEach(s => {
+        const n = Array.isArray(s[k]) ? s[k][1] : null;
+        const cls = n === null || n === undefined || hi === null ? '' : n === hi ? 'best' : n === lo ? 'worst' : '';
+        body += `<td class="${cls}">${fmt(disp(s[k]))}</td>`;
+      });
+      body += '</tr>';
+    });
+    if (body) h += `<tr class="grp"><td class="rl">${g}</td>${pick.map(()=>'<td></td>').join('')}</tr>` + body;
+  });
+  h += '</tbody></table></div>';
+  const out = document.getElementById('out');
+  out.innerHTML = h;
+  out.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { sel.delete(b.dataset.rm); sync(); render(); }));
+}
+
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  sel = new Set(PRESETS[b.dataset.preset]); sync();
+  if (sel.size >= 2) render(); else document.getElementById('out').innerHTML = '';
+}));
+document.getElementById('go').addEventListener('click', () => { render(); document.getElementById('out').scrollIntoView({behavior:'smooth'}); });
+document.getElementById('diffonly').addEventListener('change', () => { if (document.getElementById('out').innerHTML) render(); });
+
+const m = location.hash.match(/s=([\w,]+)/);
+if (m) { m[1].split(',').forEach(id => S.some(s => s.id === id) && sel.add(id)); }
+sync(); if (sel.size >= 2) render();
+</script>
+</body>
+</html>
